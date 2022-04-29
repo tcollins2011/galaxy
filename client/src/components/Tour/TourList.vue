@@ -22,17 +22,19 @@
         </div> -->
 
         <!-- Render a list of all the tours -->
-        <div v-for="tour in tours" :key="tour.name">
-                <table v-if="match(tour)">
-                    <tr class="ui-thumbnails-item" @click="select(tour)">
-                        <td>
-                            <div class="ui-thumbnails-title font-weight-bold">{{ tour.name }}</div>
-                            <div class="ui-thumbnails-text">{{ tour.description }}</div>
-                            <!-- TODO (high) add tour.tags[] -->
-                        </td>
-                    </tr>
-                </table>
+        <table v-if="match(tour)">
+            <div v-for="tour in tours" :key="tour.name">
+                <tr class="ui-thumbnails-item" @click="select(tour)">
+                    <td>
+                        <div class="ui-thumbnails-title font-weight-bold">{{ tour.name }}</div>
+                    </td>
+                    <td>
+                        <div class="ui-thumbnails-text">{{ tour.description }}</div>
+                        <!-- TODO (high) add tour.tags[] -->
+                    </td>
+                </tr>
             </div>
+        </table>
     </div>
 </template>
 
@@ -74,6 +76,9 @@ export default {
             });
     }, //TODO (moderate) add load() "spinner"
     methods: {
+        select(tour) {
+            window.location.href = `/tours/${tour.id}`;
+        },
         filtered: function (items) {
             this.nWorkflows = items.length;
         },

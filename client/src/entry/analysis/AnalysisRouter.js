@@ -145,12 +145,10 @@ export const getAnalysisRouter = (Galaxy) => {
 
         show_tours: function (tour_id) {
             this.home();
-            if (tour_id) { //TODO (low) is necessary?
-                if (Number.isInteger(tour_id)) {
-                    runTour(tour_id);
-                } else {
-                    this._display_vue_helper(TourList);
-                }
+            if (tour_id === 'list') {
+                this._display_vue_helper(TourList);
+            } else {
+                runTour(tour_id);
             }
         },
 
