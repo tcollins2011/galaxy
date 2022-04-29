@@ -23,6 +23,7 @@ import DatasetList from "components/Dataset/DatasetList";
 import { getUserPreferencesModel } from "components/User/UserPreferencesModel";
 import CustomBuilds from "components/User/CustomBuilds";
 import { runTour } from "components/Tour/runTour";
+import TourList from "components/Tour/TourList";
 import GridView from "mvc/grid/grid-view";
 import GridShared from "mvc/grid/grid-shared";
 import JobDetails from "components/JobInformation/JobDetails";
@@ -144,8 +145,12 @@ export const getAnalysisRouter = (Galaxy) => {
 
         show_tours: function (tour_id) {
             this.home();
-            if (tour_id) {
-                runTour(tour_id);
+            if (tour_id) { //TODO (low) is necessary?
+                if (Number.isInteger(tour_id)) {
+                    runTour(tour_id);
+                } else {
+                    this._display_vue_helper(TourList);
+                }
             }
         },
 

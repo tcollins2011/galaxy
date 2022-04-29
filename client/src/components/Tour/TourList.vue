@@ -26,9 +26,9 @@
                 <table v-if="match(tour)">
                     <tr class="ui-thumbnails-item" @click="select(tour)">
                         <td>
-                            <div class="ui-thumbnails-title font-weight-bold">{{ tour.html }}</div>
+                            <div class="ui-thumbnails-title font-weight-bold">{{ tour.name }}</div>
                             <div class="ui-thumbnails-text">{{ tour.description }}</div>
-                            <!-- We migth want to add tags here -->
+                            <!-- TODO (high) add tour.tags[] -->
                         </td>
                     </tr>
                 </table>
@@ -37,10 +37,11 @@
 </template>
 
 <script>
-import $ from "jquery";
+import $ from "jquery"; //TODO (high) can remove? can we avoid using jquery?
 import _l from "utils/localization";
 import { getAppRoot } from "onload/loadConfig";
-import { getGalaxyInstance } from "app";
+import { getGalaxyInstance } from "app"; //TODO (high) can remove?
+import axios from "axios"; //TODO (high) should put the Axios request in `services.js`? Is the thinking there just to keep all our APIs standardized in terms of like: error logging, some basic error messaging, and unit testing?
 import DelayedInput from "components/Common/DelayedInput";
 
 export default {
@@ -60,97 +61,21 @@ export default {
         };
     },
     computed: {
-        showNotFound() {
-            return this.nWorkflows === 0 && this.filter;
-        },
-        showNotAvailable() {
-            return this.nWorkflows === 0 && !this.filter;
-        },
-        showMessage() {
-            return !!this.message;
-        },
     },
     created() {
-        this.root = getAppRoot();
-        this.services = new Services({ root: this.root });
-        this.load();
-    },
+        let url = `${getAppRoot()}api/tours`;
+        axios
+            .get(url)
+            .then((response) => {
+                this.tours = response.data;
+            })
+            .catch((e) => {
+                this.error = this._errorMessage(e);
+            });
+    }, //TODO (moderate) add load() "spinner"
     methods: {
-        load() {
-            this.loading = true;
-            this.filter = "";
-            this.services
-                .getWorkflows()
-                .then((workflows) => {
-                    this.workflows = workflows;
-                    this.nWorkflows = workflows.length;
-                    this.loading = false;
-                })
-                .catch((error) => {
-                    this.error = error;
-                });
-        },
         filtered: function (items) {
             this.nWorkflows = items.length;
-        },
-        createWorkflow: function (workflow) {
-            window.location = `${this.root}workflows/create`;
-        },
-        importWorkflow: function (workflow) {
-            window.location = `${this.root}workflows/import`;
-        },
-        executeWorkflow: function (workflow) {
-            window.location = `${this.root}workflows/run?id=${workflow.id}`;
-        },
-        bookmarkWorkflow: function (workflow, checked) {
-            const id = workflow.id;
-            const tags = workflow.tags;
-            const data = {
-                show_in_tool_panel: checked,
-                tags: tags,
-            };
-            this.services
-                .updateWorkflow(id, data)
-                .then(({ id, name }) => {
-                    if (checked) {
-                        getGalaxyInstance().config.stored_workflow_menu_entries.push({ id: id, name: name });
-                    } else {
-                        const indexToRemove = getGalaxyInstance().config.stored_workflow_menu_entries.findIndex(
-                            (workflow) => workflow.id === id
-                        );
-                        getGalaxyInstance().config.stored_workflow_menu_entries.splice(indexToRemove, 1);
-                    }
-
-                    this.workflows.find((workflow) => {
-                        if (workflow.id === id) {
-                            workflow.show_in_tool_panel = checked;
-                            return true;
-                        }
-                    });
-                })
-                .catch((error) => {
-                    this.onError(error);
-                });
-        },
-        onTags: function (tags, index) {
-            const workflow = this.workflows[index];
-            workflow.tags = tags;
-            this.services
-                .updateWorkflow(workflow.id, {
-                    show_in_tool_panel: workflow.show_in_tool_panel,
-                    tags: workflow.tags,
-                })
-                .catch((error) => {
-                    this.onError(error);
-                });
-        },
-        onAdd: function (workflow) {
-            this.workflows.unshift(workflow);
-            this.nWorkflows = this.workflows.length;
-        },
-        onRemove: function (id) {
-            this.workflows = this.workflows.filter((item) => item.id !== id);
-            this.nWorkflows = this.workflows.length;
         },
         onUpdate: function (id, data) {
             const workflow = this.workflows.find((item) => item.id === id);
@@ -164,6 +89,18 @@ export default {
         onError: function (message) {
             this.message = message;
             this.messageVariant = "danger";
+        },
+        match(tour) {
+            const query = this.search.toLowerCase();
+            return (
+                !query ||
+                (tour.name && tour.name.toLowerCase().includes(query)) ||
+                (tour.description && tour.description.toLowerCase().includes(query))
+            ); //TODO (high) add tour.tags[]
+        },
+        _errorMessage(e) {
+            const message = e && e.response && e.response.data && e.response.data.err_msg;
+            return message || "Request failed for an unknown reason.";
         },
     },
 };
