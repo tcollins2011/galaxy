@@ -1,0 +1,22 @@
+<tool id="edta" name="edta" version="@WRAPPER_VERSION@+@VERSION_SUFFIX@" profile="20.01">
+    <description>
+        Whole-genome de-novo TE annotation 
+    </description>
+    <macros>
+        <token name="@WRAPPER_VERSION@">2.0.0</token>
+        <token name="@VERSION_SUFFIX@">galaxy0</token>
+    </macros>
+    <requirements>
+        <container type="docker">oushujun/edta:2.0.0</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        TODO: Fill in command template.
+    ]]></command>
+    <inputs>
+    </inputs>
+    <outputs>
+    </outputs>
+    <help><![CDATA[
+        TODO: Fill in help.
+    ]]></help>
+</tool>
