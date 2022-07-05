@@ -10,13 +10,219 @@
         <container type="docker">oushujun/edta:2.0.0</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-        TODO: Fill in command template.
+    ## General Run Command
+
+    ln -s '$genome' ./input.fa &&
+    perl -cp /edta/EDTA.pl
+    --genome input.fa
+    --species $species
+    #if $cds:
+        --cds $cds
+    #end if
+    #if $curatedlib:
+        --curatedlib $curatedlib
+    #end if
+    #if $sensitive:
+        --cds $sensitive
+    #end if
+    #if $anno_select.anno == '1':
+        --anno 1
+        #if $anno_select.exclude:
+            --exclude $anno_select.exclude
+        #end if
+        #if $anno_select.evaluate:
+            --evaluate 1
+        #end if
+    #endif
+
+    --evaluate
+    ## ln -s $genome
+    ##perl ../EDTA.pl --genome genome.fa --cds genome.cds.fa --curatedlib ../database/rice6.9.5.liban --exclude genome.exclude.bed --overwrite 1 --sensitive 1 --anno 1 --evaluate 1 --threads 10
+
+    ## Divide and Conquer
+
+    ## Benchmark
     ]]></command>
     <inputs>
+        <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
+        <param name='species' type="select" label="Which species should be used for identification of TIR candidates">
+            <option value="Others">Others</option>
+            <option value="Rice">Rice</option>
+            <option value="Maize">Maize</option>
+        </param>
+        <param name="cds" argumet="--cds" type="data" format="fasta" label="Coding Sequence File" help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
+        <param name="curatedlib" argument="--curatedlib" type="data" format="fasta" label="Curated Library File" optional='true' help="Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here."/>
+        <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
+        <conditional name='anno_select'>
+            <param name="anno" type="select" label="Would you like to perform whole-genome TE annotation after TE library construction?">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+            </param>
+            <when value="1">
+                <param name="evaluate" argument="evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
+                <param name="exclude" argument="--exclude" type="data" format="bed" label="Exclude" help="Exclude bed format regions from TE annotation" optional="true"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
+        <data name="outfile_library" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library"/>
+        <data name="Novel_TE_Families"  format="fasta" label="${tool.name} on ${on_string}: Novel TE Families">
+            <filter>curatedlib</filter>
+        </data>
+        <data name="Whole_Genome_TE_Annotation"  format="gff3" label="${tool.name} on ${on_string}: Whole Genome TE Annotation">
+            <filter>anno_select['anno'] == "1"</filter>
+        </data>
+        <data name="Summary_Whole_Genome_TE_Annotation"  format="sum" label="${tool.name} on ${on_string}: Summary of Whole Genome TE Annotation">
+            <filter>anno_select['anno'] == "1"</filter>
+        </data>
+        <data name="Low_Threshold_TE_Masking"  format="gff3" label="${tool.name} on ${on_string}: Low_Threshold_TE_Masking">
+            <filter>anno_select['anno'] == "1"</filter>
+        </data>
+        <data name="Annotation_Inconsistency_Simple_TEs"  format="sum" label="${tool.name} on ${on_string}: Simple TE Annotation Inconsistency">
+            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+        </data>
+        <data name="Annotation_Inconsistency_Nested_TEs"  format="sum" label="${tool.name} on ${on_string}: Nested TE Annotation Inconsistency">
+            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+        </data>
+        <data name="Overall_Annotation_Inconsistency"  format="sum" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
+            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+        </data>
     </outputs>
+    <tests>
+    <!-- From Head to Toe Default Functions -->
+        <test expect_num_outputs="8">
+            <conditional>
+                <param name="genome" value="test_genome.fa" ftype="fasta"/>
+                <param name="cds" value="test_genome.cds.fa" ftype="bed"/>
+                <param name="curatedlib" value="test_rice6.9.5.liban" ftype="fasta"/>
+                <param name="species" value='otheres'/>
+                <param name="anno" value='true'/>
+                <param name="exclude" value="test_genome.exclude.bed" ftype="fasta"/>
+                <param name="sensitive" value="true"/>
+                <param name="evaluate" value="true"/>
+            </conditional>
+            <output name="outfile_library" file="test_1.pheno.json" lines_diff="1"/></output>
+            <output name="Novel_TE_Families" file="" lines_diff="0"></output>
+            <output name="Whole_Genome_TE_Annotation" file="" lines_diff="1"> </output>
+            <output name="Summary_Whole_Genome_TE_Annotation" >
+                <assert_contents>
+                    <has_text text=" Chr2:624582..626969      1            974          0.10% "/>
+                    <has_text text="           Os0029      1            244          0.02% "/>
+                    <has_text text=" RST-Osativa-Cluster_7      1            175          0.02% "/>
+                </assert_contents>
+            </output>
+            <output name="Low_Threshold_TE_Masking" file="" lines_diff="0"></output>
+            <output name="Annotation_Inconsistency_Simple_TEs">
+                <assert_contents>
+                    <has_text text="LTR/Copia	2	0	0	0	0	0	0	0	0	0	0.0000"/>
+                    <has_text text="TIR/PIF_Harbinger	0	0	0	27	2	0	0	0	0	0	0.0690"/>
+                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	8	0.0000"/>
+                </assert_contents>
+            </output>
+            <output name="Annotation_Inconsistency_Nested_TEs">
+                <assert_contents>
+                    <has_text text="rs9923231 reference"/>
+                    <has_text text="nonTIR/helitron	0	0	0	0	4	0.0000"/>
+                    <has_text text="LTR/Gypsy	2	0	0	0	0	0.0000"/>
+                </assert_contents>
+            </output>
+            <output name="Overall_Annotation_Inconsistency" >
+                <assert_contents>
+                    <has_text text="TIR/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
+                    <has_text text="TIR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
+                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Divide and Conquer -->
+        <test expect_num_outputs="1">
+            <conditional>
+                <param name="genome" value="test_genome.fa" ftype="fasta"/>
+                <param name="species" value='others'/>
+                <param name="type" value='ltr'/>
+            </conditional>
+            <output>
+                <assert_contents>
+                    <has_text text="LTR/Copia 0	0	8	1	0	0	0	0	0	0	0.1111"/>
+                    <has_text text="LTR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
+                    <has_text text="LTR/Corcis	0	0	0	0	0	0	0	0	0	12	0.0000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional>
+                <param name="genome" value="test_genome.fa" ftype="fasta"/>
+                <param name="species" value='others'/>
+                <param name="type" value='hellitron'/>
+            </conditional>
+            <output>
+                <assert_contents>
+                    <has_text text="TIR/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
+                    <has_text text="TIR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
+                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional>
+                <param name="genome" value="test_genome.fa" ftype="fasta"/>
+                <param name="species" value='others'/>
+                <param name="type" value='tir'/>
+            </conditional>
+            <output>
+                <assert_contents>
+                    <has_text text="helitron/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
+                    <has_text text="helitron/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
+                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Benchmark -->
+    </tests>
+    <citations>
+        <citation type="doi">10.1186/s13059-019-1905-y</citation>
+    </citations>
     <help><![CDATA[
-        TODO: Fill in help.
-    ]]></help>
+        
+**The Extensive *de novo* TE Annotator (EDTA)**
+-----------------------------------------------
+        
+
+This package is developed for automated whole-genome de-novo TE annotation and benchmarking the annotation performance of TE libraries.
+
+The EDTA package was designed to filter out false discoveries in raw TE candidates and generate a high-quality non-redundant TE library for whole-genome TE annotations. Selection of initial search programs were based on benckmarkings on the annotation performance using a manually curated TE library in the rice genome.
+        
+
+**Inputs**
+----------
+
+**Required**
+
+The genome file [FASTA]. Please make sure sequence names are short (<=13 characters) and simple (i.e, letters, numbers, and underscore).
+
+**Optional**
+
+1. Coding sequence of the species or a closely related species [FASTA]. This file helps to purge gene sequences in the TE library.
+2. Known gene positions of this version of the genome assembly [BED]. Coordinates specified in this file will be excluded from TE annotation to avoid over-masking.
+3. Curated TE library of the species [FASTA]. This file is trusted 100%. Please make sure it's curated. If you only have a couple of curated sequences, that's fine. It doesn't need to be complete. Providing curated TE sequences, especially for those under annotated TE types (i.e., SINEs and LINEs), will greatly improve the annotation quality.
+
+**Outputs**
+-----------
+
+A non-redundant TE library. The curated library will be included in this file if provided. TEs are classified into the superfamily level and using the three-letter naming system reported in Wicker et al. (2007).(https://www.nature.com/articles/nrg2165). Each sequence can be considered as a TE family.
+
+**Optional**
+
+1. Novel TE families: This file contains TE sequences that are not included in the curated library (`curatedlib` required).
+2. Whole-genome TE annotation: This file contains both structurally intact and fragmented TE annotations (`anno` required).
+3. Summary of whole-genome TE annotation: (`anno` required).
+4. Low-threshold TE masking: This is a genome file with only long TEs (>=1 kb) being masked. You may use this for de novo gene annotations. In practice, this approach will reduce overmasking for genic regions, which can improve gene prediction quality. However, initial gene models should contain TEs and need further filtering (`anno` required).
+5. Annotation inconsistency for simple TEs: (`anno and evaluate` required).
+6. Annotation inconsistency for nested TEs: (`anno and evaluate` required).
+7. Overall annotation inconsistency: (`anno and evaluate` required).
+
+
+
+
+]]></help>
 </tool>
