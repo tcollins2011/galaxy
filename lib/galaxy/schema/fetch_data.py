@@ -109,6 +109,7 @@ class BaseDataElement(FetchBaseModel):
     ext: str = Field("auto")
     space_to_tab: bool = False
     to_posix_lines: bool = False
+    deferred: bool = False
     tags: Optional[List[str]]
     created_from_basename: Optional[str]
     extra_files: Optional[ExtraFiles]
@@ -186,7 +187,7 @@ CompositeDataElement.update_forward_refs()
 
 
 class NestedElement(BaseDataElement):
-    items: List["AnyElement"] = Field(..., alias="elements")
+    items: List[Union["AnyElement", "NestedElement"]] = Field(..., alias="elements")
 
 
 AnyElement = Annotated[

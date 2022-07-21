@@ -45,7 +45,7 @@
                         @onUpdateFavorites="onUpdateFavorites">
                         <template v-slot:body>
                             <FormDisplay
-                                :id="formConfig.id"
+                                :id="toolId"
                                 :inputs="formConfig.inputs"
                                 :validation-scroll-to="validationScrollTo"
                                 @onChange="onChange"
@@ -91,6 +91,7 @@
 import { getGalaxyInstance } from "app";
 import { getToolFormData, updateToolFormData, submitJob } from "./services";
 import { allowCachedJobs } from "./utilities";
+import { refreshContentsWrapper } from "utils/data";
 import ToolCard from "./ToolCard";
 import ButtonSpinner from "components/Common/ButtonSpinner";
 import CurrentUser from "components/providers/CurrentUser";
@@ -168,6 +169,12 @@ export default {
     computed: {
         toolName() {
             return this.formConfig.name;
+        },
+        toolId() {
+            // ensure version is included in tool id, otherwise form inputs are
+            // not re-rendered when versions change.
+            const { id, version } = this.formConfig;
+            return id.endsWith(version) ? id : `${id}/${version}`;
         },
         tooltip() {
             return `Execute: ${this.formConfig.name} (${this.formConfig.version})`;
@@ -274,7 +281,6 @@ export default {
                 return;
             }
             this.showExecuting = true;
-            const Galaxy = getGalaxyInstance();
             const jobDef = {
                 history_id: historyId,
                 tool_id: this.formConfig.id,
@@ -296,9 +302,7 @@ export default {
             submitJob(jobDef).then(
                 (jobResponse) => {
                     this.showExecuting = false;
-                    if (Galaxy.currHistoryPanel) {
-                        Galaxy.currHistoryPanel.refreshContents();
-                    }
+                    refreshContentsWrapper();
                     if (jobResponse.produces_entry_points) {
                         this.showEntryPoints = true;
                         this.entryPoints = jobResponse.jobs;

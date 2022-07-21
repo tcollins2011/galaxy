@@ -5,13 +5,15 @@
  * submitted, delayed only by the throttle period and the request response time.
  */
 
-import store from "store/index";
+import defaultStore from "store/index";
 import { urlData } from "utils/url";
 import { getCurrentHistoryFromServer } from "./queries";
 import { getGalaxyInstance } from "app";
 
 const limit = 1000;
-const throttlePeriod = 3000;
+
+let throttlePeriod = 3000;
+let watchTimeout = null;
 
 // last time the history has changed
 let lastUpdateTime = null;
@@ -19,13 +21,34 @@ let lastUpdateTime = null;
 // last time changed history items have been requested
 let lastRequestDate = new Date();
 
-export async function watchHistory() {
+// We only want to kick this off once we're actively watching history
+let watchingVisibility = false;
+
+function setVisibilityThrottle() {
+    if (document.visibilityState === "visible") {
+        // Poll every 3 seconds when visible
+        throttlePeriod = 3000;
+        rewatchHistory();
+    } else {
+        // Poll every 60 seconds when hidden/backgrounded
+        throttlePeriod = 60000;
+    }
+}
+
+export async function watchHistoryOnce(store) {
+    // "Reset" watchTimeout so we don't queue up watchHistory calls in rewatchHistory.
+    watchTimeout = null;
     // get current history
-    const history = await getCurrentHistoryFromServer();
-    const historyId = history.id;
+    const checkForUpdate = new Date();
+    const history = await getCurrentHistoryFromServer(lastUpdateTime);
+    store.commit("setLastCheckedTime", { checkForUpdate });
+    if (!history) {
+        return;
+    }
 
     // continue if the history update time has changed
     if (!lastUpdateTime || lastUpdateTime < history.update_time) {
+        const historyId = history.id;
         lastUpdateTime = history.update_time;
         // execute request to obtain recently changed items
         const params = {
@@ -58,7 +81,29 @@ export async function watchHistory() {
             });
         }
     }
-    setTimeout(() => {
+}
+
+export async function watchHistory(store = defaultStore) {
+    // Only set up visibility listeners once, whenever a watch is first started
+    if (watchingVisibility === false) {
+        watchingVisibility = true;
+        document.addEventListener("visibilitychange", setVisibilityThrottle);
+    }
+    try {
+        await watchHistoryOnce(store);
+    } catch (error) {
+        // would be fantastic if we could show some error alerting the user to this
+        console.warn(error);
+    } finally {
+        watchTimeout = setTimeout(() => {
+            watchHistory(store);
+        }, throttlePeriod);
+    }
+}
+
+export function rewatchHistory() {
+    if (watchTimeout) {
+        clearTimeout(watchTimeout);
         watchHistory();
-    }, throttlePeriod);
+    }
 }

@@ -22,6 +22,7 @@ from fastapi import (
 )
 from gxformat2._yaml import ordered_dump
 from markupsafe import escape
+from pydantic import Extra
 
 from galaxy import (
     exceptions,
@@ -47,11 +48,15 @@ from galaxy.managers.workflows import (
 from galaxy.model.item_attrs import UsesAnnotations
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
+    AsyncFile,
+    AsyncTaskResultSummary,
     SetSlugPayload,
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
+    StoreContentSource,
     WorkflowSortByEnum,
+    WriteStoreToPayload,
 )
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
@@ -62,6 +67,7 @@ from galaxy.util.sanitize_html import sanitize_html
 from galaxy.version import VERSION
 from galaxy.web import (
     expose_api,
+    expose_api_anonymous,
     expose_api_anonymous_and_sessionless,
     expose_api_raw,
     expose_api_raw_anonymous_and_sessionless,
@@ -73,10 +79,15 @@ from galaxy.webapps.base.controller import (
     UsesStoredWorkflowMixin,
 )
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
+from galaxy.webapps.galaxy.services.base import (
+    ConsumesModelStores,
+    ServesExportStores,
+)
 from galaxy.webapps.galaxy.services.invocations import (
     InvocationIndexPayload,
     InvocationSerializationParams,
     InvocationsService,
+    PrepareStoreDownloadPayload,
 )
 from galaxy.webapps.galaxy.services.workflows import (
     WorkflowIndexPayload,
@@ -100,7 +111,21 @@ log = logging.getLogger(__name__)
 router = Router(tags=["workflows"])
 
 
-class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, UsesAnnotations, SharableMixin):
+class CreateInvocationFromStore(StoreContentSource):
+    history_id: Optional[str]
+
+    class Config:
+        extra = Extra.allow
+
+
+class WorkflowsAPIController(
+    BaseGalaxyAPIController,
+    UsesStoredWorkflowMixin,
+    UsesAnnotations,
+    SharableMixin,
+    ServesExportStores,
+    ConsumesModelStores,
+):
     service: WorkflowsService = depends(WorkflowsService)
     invocations_service: InvocationsService = depends(InvocationsService)
 
@@ -257,7 +282,7 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
             trans, workflow_id, by_stored_id=not instance
         )
         return [
-            {"version": i, "update_time": str(w.update_time), "steps": len(w.steps)}
+            {"version": i, "update_time": w.update_time.isoformat(), "steps": len(w.steps)}
             for i, w in enumerate(reversed(stored_workflow.workflows))
         ]
 
@@ -870,6 +895,37 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         trans.response.headers["total_matches"] = total_matches
         return invocations
 
+    @expose_api_anonymous
+    def create_invocations_from_store(self, trans, payload, **kwd):
+        """
+        POST /api/invocations/from_store
+
+        Create invocation(s) from a supplied model store.
+
+        Input can be an archive describing a Galaxy model store containing an
+        workflow invocation - for instance one created with with write_store
+        or prepare_store_download endpoint.
+        """
+        create_payload = CreateInvocationFromStore(**payload)
+        serialization_params = InvocationSerializationParams(**payload)
+        # refactor into a service...
+        return self._create_from_store(trans, create_payload, serialization_params)
+
+    def _create_from_store(
+        self, trans, payload: CreateInvocationFromStore, serialization_params: InvocationSerializationParams
+    ):
+        history = self.history_manager.get_owned(
+            self.decode_id(payload.history_id), trans.user, current_history=trans.history
+        )
+        object_tracker = self.create_objects_from_store(
+            trans,
+            payload,
+            history=history,
+        )
+        return self.invocations_service.serialize_workflow_invocations(
+            object_tracker.invocations_by_key.values(), serialization_params
+        )
+
     @expose_api
     def show_invocation(self, trans: GalaxyWebTransaction, invocation_id, **kwd):
         """
@@ -901,9 +957,10 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         """
         decoded_workflow_invocation_id = self.decode_id(invocation_id)
         workflow_invocation = self.workflow_manager.get_invocation(trans, decoded_workflow_invocation_id, eager=True)
-        if workflow_invocation:
-            return self.__encode_invocation(workflow_invocation, **kwd)
-        return None
+        if not workflow_invocation:
+            raise exceptions.ObjectNotFound()
+
+        return self.__encode_invocation(workflow_invocation, **kwd)
 
     @expose_api
     def cancel_invocation(self, trans: ProvidesUserContext, invocation_id, **kwd):
@@ -951,11 +1008,28 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         workflow = workflow_invocation.workflow
         stored_workflow = workflow.stored_workflow
 
-        # pull in the user info from those who the history and workflow has been shared with
-        contributing_users = [stored_workflow.user]
+        # pull in the license info from workflow if it exists
+        bco_license = ""
+        if workflow.license:
+            bco_license = workflow.license
 
-        # may want to extend this to have more reviewers.
-        reviewing_users = [stored_workflow.user]
+        # pull in the creator_metadata info from workflow if it exists
+        reviewers: list = []
+        contributors = []
+        if workflow.creator_metadata:
+            for creator in workflow.creator_metadata:
+                if creator["class"] == "Person":
+                    contributor = {}
+                    contributor["contribution"] = ["contributedBy"]
+                    if "name" in creator:
+                        contributor["name"] = creator["name"]
+                    if "email" in creator:
+                        contributor["email"] = creator["email"]
+                    if "identifier" in creator:
+                        contributor["orcid"] = creator["identifier"]
+
+                    contributors.append(contributor)
+
         encoded_workflow_id = trans.security.encode_id(stored_workflow.id)
         encoded_history_id = trans.security.encode_id(history.id)
         dict_workflow = json.loads(self.workflow_dict(trans, encoded_workflow_id))
@@ -966,42 +1040,14 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
             if workflow == w:
                 current_version = i
 
-        contributors = []
-        for contributing_user in contributing_users:
-            contributor = {
-                "orcid": kwd.get("xref", []),
-                "name": contributing_user.username,
-                "affiliation": "",
-                "contribution": ["authoredBy"],
-                "email": contributing_user.email,
-            }
-            contributors.append(contributor)
-
-        reviewers = []
-        for reviewer in reviewing_users:
-            reviewer = {
-                "status": "approved",
-                "reviewer_comment": "",
-                "date": workflow_invocation.update_time.isoformat(),
-                "reviewer": {
-                    "orcid": kwd.get("orcid", []),
-                    "name": contributing_user.username,
-                    "affiliation": "",
-                    "contribution": "curatedBy",
-                    "email": contributing_user.email,
-                },
-            }
-            reviewers.append(reviewer)
-
         provenance_domain = {
             "name": workflow.name,
-            "version": current_version,
+            "version": str(current_version) + ".0",
             "review": reviewers,
-            "derived_from": url_for("workflow", id=encoded_workflow_id, qualified=True),
             "created": workflow_invocation.create_time.isoformat(),
             "modified": workflow_invocation.update_time.isoformat(),
             "contributors": contributors,
-            "license": "https://spdx.org/licenses/CC-BY-4.0.html",
+            "license": bco_license,
         }
 
         keywords = []
@@ -1132,29 +1178,26 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
             try:
                 for k, v in inv_step.workflow_step.tool_inputs.items():
                     param, value, step = k, v, inv_step.workflow_step.order_index
-                    parametric_domain.append({"param": param, "value": value, "step": step})
+                    parametric_domain.append({"param": str(param), "value": str(value), "step": str(step)})
             except Exception:
                 continue
 
         execution_domain = {
-            "script_access_type": "a_galaxy_workflow",
-            "script": [url_for("workflows", encoded_workflow_id=encoded_workflow_id, qualified=True)],
+            "script": [{"uri": {"uri": url_for("workflows", encoded_workflow_id=encoded_workflow_id, qualified=True)}}],
             "script_driver": "Galaxy",
             "software_prerequisites": software_prerequisites,
-            "external_data_endpoints": [
-                {"name": "Access to Galaxy", "url": url_for("/", qualified=True)},
-                kwd.get("external_data_endpoints"),
-            ],
+            "external_data_endpoints": [{"name": "Access to Galaxy", "url": url_for("/", qualified=True)}],
             "environment_variables": kwd.get("environment_variables", {}),
         }
 
         extension = [
             {
-                "extension_schema": "https://raw.githubusercontent.com/biocompute-objects/extension_domain/6d2cd8482e6075746984662edcf78b57d3d38065/galaxy/galaxy_extension.json",
+                "extension_schema": "https://raw.githubusercontent.com/biocompute-objects/extension_domain/1.2.0/galaxy/galaxy_extension.json",
                 "galaxy_extension": {
                     "galaxy_url": url_for("/", qualified=True),
                     "galaxy_version": VERSION,
                     # TODO:
+                    # Extend this definition to include more information that is significan for a galaxy workflow/invocation?
                     # 'aws_estimate': aws_estimate,
                     # 'job_metrics': metrics
                 },
@@ -1162,8 +1205,8 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
         ]
 
         error_domain = {
-            "empirical_error": kwd.get("empirical_error", []),
-            "algorithmic_error": kwd.get("algorithmic_error", []),
+            "empirical_error": kwd.get("empirical_error", {}),
+            "algorithmic_error": kwd.get("algorithmic_error", {}),
         }
 
         bco_dict = {
@@ -1185,7 +1228,7 @@ class WorkflowsAPIController(BaseGalaxyAPIController, UsesStoredWorkflowMixin, U
             "error_domain": error_domain,
         }
         # Generate etag from the BCO excluding object_id and spec_version, as
-        # specified in https://github.com/biocompute-objects/BCO_Specification/blob/main/docs/top-level.md#203-etag-etag
+        # specified in https://opensource.ieee.org/2791-object/ieee-2791-schema/-/blob/master/2791object.json
         etag = hashlib.sha256(json.dumps(bco_dict, sort_keys=True).encode()).hexdigest()
         bco_dict.update(
             {
@@ -1413,6 +1456,10 @@ StoredWorkflowIDPathParam: EncodedDatabaseIdField = Path(
     ..., title="Stored Workflow ID", description="The encoded database identifier of the Stored Workflow."
 )
 
+InvocationIDPathParam: EncodedDatabaseIdField = Path(
+    ..., title="Invocation ID", description="The encoded database identifier of the Invocation."
+)
+
 DeletedQueryParam: bool = Query(
     default=False, title="Display deleted", description="Whether to restrict result to deleted workflows."
 )
@@ -1486,6 +1533,7 @@ SkipStepCountsQueryParam: bool = Query(
 @router.cbv
 class FastAPIWorkflows:
     service: WorkflowsService = depends(WorkflowsService)
+    invocations_service: InvocationsService = depends(InvocationsService)
 
     @router.get(
         "/api/workflows",
@@ -1613,3 +1661,36 @@ class FastAPIWorkflows:
         """Sets a new slug to access this item by URL. The new slug must be unique."""
         self.service.shareable_service.set_slug(trans, id, payload)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post(
+        "/api/invocations/{invocation_id}/prepare_store_download",
+        summary="Prepare a worklfow invocation export-style download.",
+    )
+    def prepare_store_download(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        invocation_id: EncodedDatabaseIdField = InvocationIDPathParam,
+        payload: PrepareStoreDownloadPayload = Body(...),
+    ) -> AsyncFile:
+        return self.invocations_service.prepare_store_download(
+            trans,
+            invocation_id,
+            payload,
+        )
+
+    @router.post(
+        "/api/invocations/{invocation_id}/write_store",
+        summary="Prepare a worklfow invocation export-style download and write to supplied URI.",
+    )
+    def write_store(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        invocation_id: EncodedDatabaseIdField = InvocationIDPathParam,
+        payload: WriteStoreToPayload = Body(...),
+    ) -> AsyncTaskResultSummary:
+        rval = self.invocations_service.write_store(
+            trans,
+            invocation_id,
+            payload,
+        )
+        return rval

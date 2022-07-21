@@ -42,6 +42,14 @@
                         <span v-else>You have {{ histories.length }} histories.</span>
                     </b-dropdown-text>
 
+                    <b-dropdown-item
+                        v-if="!currentUser.isAnonymous"
+                        data-description="switch to multi history view"
+                        @click="redirect('/history/view_multiple')">
+                        <Icon fixed-width class="mr-1" icon="columns" />
+                        <span v-localize>Show Histories Side-by-Side</span>
+                    </b-dropdown-item>
+
                     <b-dropdown-divider></b-dropdown-divider>
 
                     <b-dropdown-item v-if="!currentUser.isAnonymous" v-b-modal:copy-history-modal>
@@ -52,11 +60,6 @@
                     <b-dropdown-item v-b-modal:delete-history-modal>
                         <Icon fixed-width icon="trash" class="mr-1" />
                         <span v-localize>Delete this History</span>
-                    </b-dropdown-item>
-
-                    <b-dropdown-item v-b-modal:purge-history-modal>
-                        <Icon fixed-width icon="burn" class="mr-1" />
-                        <span v-localize>Purge this History</span>
                     </b-dropdown-item>
 
                     <b-dropdown-divider></b-dropdown-divider>
@@ -75,17 +78,9 @@
 
                     <b-dropdown-item
                         data-description="show structure"
-                        @click="backboneRoute('/histories/show_structure')">
+                        @click="$router.push('/histories/show_structure')">
                         <Icon fixed-width icon="code-branch" class="mr-1" />
                         <span v-localize>Show Structure</span>
-                    </b-dropdown-item>
-
-                    <b-dropdown-item
-                        v-if="!currentUser.isAnonymous"
-                        data-description="switch to multi history view"
-                        @click="redirect('/history/view_multiple')">
-                        <Icon fixed-width class="mr-1" icon="columns" />
-                        <span v-localize>Show Histories Side-by-Side</span>
                     </b-dropdown-item>
 
                     <template v-if="!currentUser.isAnonymous">
@@ -93,12 +88,12 @@
 
                         <b-dropdown-item
                             data-description="share or publish"
-                            @click="backboneRoute('/histories/sharing', { id: history.id })">
+                            @click="$router.push(`/histories/sharing?id=${history.id}`)">
                             <Icon fixed-width icon="share-alt" class="mr-1" />
                             <span v-localize>Share or Publish</span>
                         </b-dropdown-item>
 
-                        <b-dropdown-item @click="backboneRoute('/histories/permissions', { id: history.id })">
+                        <b-dropdown-item @click="$router.push(`/histories/permissions?id=${history.id}`)">
                             <Icon fixed-width icon="user-lock" class="mr-1" />
                             <span v-localize>Set Permissions</span>
                         </b-dropdown-item>
@@ -110,12 +105,14 @@
                     </template>
                     <b-dropdown-divider></b-dropdown-divider>
 
-                    <b-dropdown-item @click="backboneRoute('/histories/citations', { id: history.id })">
+                    <b-dropdown-item @click="$router.push(`/histories/citations?id=${history.id}`)">
                         <Icon fixed-width icon="stream" class="mr-1" />
                         <span v-localize>Export Tool Citations</span>
                     </b-dropdown-item>
 
-                    <b-dropdown-item data-description="export to file" @click="backboneRoute(exportLink)">
+                    <b-dropdown-item
+                        data-description="export to file"
+                        @click="$router.push(`/histories/${history.id}/export`)">
                         <Icon fixed-width icon="file-archive" class="mr-1" />
                         <span v-localize>Export History to File</span>
                     </b-dropdown-item>
@@ -135,7 +132,7 @@
         <SelectorModal
             id="selector-history-modal"
             :histories="histories"
-            :current-history="history"
+            :current-history-id="history.id"
             @selectHistory="$emit('setCurrentHistory', $event)" />
 
         <CopyModal id="copy-history-modal" :history="history" />
@@ -187,9 +184,6 @@ export default {
     },
     computed: {
         ...mapGetters("user", ["currentUser"]),
-        exportLink() {
-            return `histories/${this.history.id}/export`;
-        },
     },
     methods: {
         switchToLegacyHistoryPanel,

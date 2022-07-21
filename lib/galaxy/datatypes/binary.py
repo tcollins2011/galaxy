@@ -221,6 +221,7 @@ class CompressedArchive(Binary):
 
     file_ext = "compressed_archive"
     compressed = True
+    is_binary = "maybe"  # type: ignore[assignment]  # https://github.com/python/mypy/issues/8796
 
     def set_peek(self, dataset):
         if not dataset.dataset.purged:
@@ -531,8 +532,10 @@ class BamNative(CompressedArchive, _BamOrSam):
         file_paths = []
         rel_paths.append(f"{name or dataset.file_name}.{dataset.extension}")
         file_paths.append(dataset.file_name)
-        rel_paths.append(f"{name or dataset.file_name}.{dataset.extension}.bai")
-        file_paths.append(dataset.metadata.bam_index.file_name)
+        # We may or may not have a bam index file (BamNative doesn't have it, but also index generation may have failed)
+        if dataset.metadata.bam_index:
+            rel_paths.append(f"{name or dataset.file_name}.{dataset.extension}.bai")
+            file_paths.append(dataset.metadata.bam_index.file_name)
         return zip(file_paths, rel_paths)
 
     def groom_dataset_content(self, file_name):
@@ -722,7 +725,7 @@ class Bam(BamNative):
             pass
         return needs_sorting
 
-    def set_meta(self, dataset, overwrite=True, **kwd):
+    def set_meta(self, dataset, overwrite=True, metadata_tmp_files_dir=None, **kwd):
         # These metadata values are not accessible by users, always overwrite
         super().set_meta(dataset=dataset, overwrite=overwrite, **kwd)
         index_flag = self.get_index_flag(dataset.file_name)
@@ -733,7 +736,9 @@ class Bam(BamNative):
             spec_key = "bam_csi_index"
             index_file = dataset.metadata.bam_csi_index
         if not index_file:
-            index_file = dataset.metadata.spec[spec_key].param.new_file(dataset=dataset)
+            index_file = dataset.metadata.spec[spec_key].param.new_file(
+                dataset=dataset, metadata_tmp_files_dir=metadata_tmp_files_dir
+            )
         if index_flag == "-b":
             # IOError: No such file or directory: '-b' if index_flag is set to -b (pysam 0.15.4)
             pysam.index(dataset.file_name, index_file.file_name)
@@ -906,13 +911,15 @@ class CRAM(Binary):
         optional=True,
     )
 
-    def set_meta(self, dataset, overwrite=True, **kwd):
+    def set_meta(self, dataset, overwrite=True, metadata_tmp_files_dir=None, **kwd):
         major_version, minor_version = self.get_cram_version(dataset.file_name)
         if major_version != -1:
             dataset.metadata.cram_version = f"{str(major_version)}.{str(minor_version)}"
 
         if not dataset.metadata.cram_index:
-            index_file = dataset.metadata.spec["cram_index"].param.new_file(dataset=dataset)
+            index_file = dataset.metadata.spec["cram_index"].param.new_file(
+                dataset=dataset, metadata_tmp_files_dir=metadata_tmp_files_dir
+            )
             if self.set_index_file(dataset, index_file):
                 dataset.metadata.cram_index = index_file
 
@@ -985,12 +992,14 @@ class Bcf(BaseBcf):
         except Exception:
             return False
 
-    def set_meta(self, dataset, overwrite=True, **kwd):
+    def set_meta(self, dataset, overwrite=True, metadata_tmp_files_dir=None, **kwd):
         """Creates the index for the BCF file."""
         # These metadata values are not accessible by users, always overwrite
         index_file = dataset.metadata.bcf_index
         if not index_file:
-            index_file = dataset.metadata.spec["bcf_index"].param.new_file(dataset=dataset)
+            index_file = dataset.metadata.spec["bcf_index"].param.new_file(
+                dataset=dataset, metadata_tmp_files_dir=metadata_tmp_files_dir
+            )
         # Create the bcf index
         dataset_symlink = os.path.join(
             os.path.dirname(index_file.file_name),
@@ -1200,7 +1209,7 @@ class Loom(H5):
                     if isinstance(loom_spec_version, bytes):
                         loom_spec_version = loom_spec_version.decode()
                 dataset.metadata.loom_spec_version = loom_spec_version
-                dataset.creation_date = loom_file.attrs.get("creation_date")
+                dataset.metadata.creation_date = loom_file.attrs.get("creation_date")
                 dataset.metadata.shape = tuple(loom_file["matrix"].shape)
 
                 tmp = list(loom_file.get("layers", {}).keys())
@@ -1337,7 +1346,7 @@ class Anndata(H5):
             dataset.metadata.description = anndata_file.attrs.get("description")
             dataset.metadata.url = anndata_file.attrs.get("url")
             dataset.metadata.doi = anndata_file.attrs.get("doi")
-            dataset.creation_date = anndata_file.attrs.get("creation_date")
+            dataset.metadata.creation_date = anndata_file.attrs.get("creation_date")
             dataset.metadata.shape = anndata_file.attrs.get("shape", dataset.metadata.shape)
             # none of the above appear to work in any dataset tested, but could be useful for
             # future AnnData datasets
@@ -1868,12 +1877,14 @@ class H5MLM(H5):
         optional=True,
     )
 
-    def set_meta(self, dataset, overwrite=True, **kwd):
+    def set_meta(self, dataset, overwrite=True, metadata_tmp_files_dir=None, **kwd):
         try:
             spec_key = "hyper_params"
             params_file = dataset.metadata.hyper_params
             if not params_file:
-                params_file = dataset.metadata.spec[spec_key].param.new_file(dataset=dataset)
+                params_file = dataset.metadata.spec[spec_key].param.new_file(
+                    dataset=dataset, metadata_tmp_files_dir=metadata_tmp_files_dir
+                )
             with h5py.File(dataset.file_name, "r") as handle:
                 hyper_params = handle["-model_hyperparameters-"][()]
             hyper_params = json.loads(util.unicodify(hyper_params))

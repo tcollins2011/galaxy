@@ -5,6 +5,7 @@ const VueLoaderPlugin = require("vue-loader/lib/plugin");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
 const DuplicatePackageCheckerPlugin = require("@cerner/duplicate-package-checker-webpack-plugin");
+const { DumpMetaPlugin } = require("dumpmeta-webpack-plugin");
 
 const scriptsBase = path.join(__dirname, "src");
 const testsBase = path.join(__dirname, "tests");
@@ -23,6 +24,8 @@ const modulesExcludedFromLibs = [
     "@citation-js",
     "citeproc",
 ].join("|");
+
+const buildDate = new Date();
 
 module.exports = (env = {}, argv = {}) => {
     // environment name based on -d, -p, webpack flag
@@ -193,13 +196,21 @@ module.exports = (env = {}, argv = {}) => {
             }),
             new webpack.DefinePlugin({
                 __targetEnv__: JSON.stringify(targetEnv),
-                __buildTimestamp__: JSON.stringify(new Date().toISOString()),
+                __buildTimestamp__: JSON.stringify(buildDate.toISOString()),
             }),
             new VueLoaderPlugin(),
             new MiniCssExtractPlugin({
                 filename: "[name].css",
             }),
             new DuplicatePackageCheckerPlugin(),
+            new DumpMetaPlugin({
+                filename: path.join(__dirname, "../lib/galaxy/web/framework/meta.json"),
+                prepare: (stats) => ({
+                    // add any other information you need to dump
+                    hash: stats.hash,
+                    epoch: Date.parse(buildDate),
+                }),
+            }),
         ],
         devServer: {
             client: {
@@ -207,7 +218,11 @@ module.exports = (env = {}, argv = {}) => {
                     errors: true,
                     warnings: false,
                 },
+                webSocketURL: {
+                    port: process.env.GITPOD_WORKSPACE_ID ? 443 : undefined,
+                },
             },
+            allowedHosts: process.env.GITPOD_WORKSPACE_ID ? "all" : "auto",
             devMiddleware: {
                 publicPath: "/static/dist",
             },

@@ -17,16 +17,21 @@ from typing import (
 from urllib.parse import urlencode
 
 from fastapi import (
-    Cookie,
     Form,
     Header,
     Query,
     Request,
     Response,
+    Security,
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.params import Depends
 from fastapi.routing import APIRoute
+from fastapi.security import (
+    APIKeyCookie,
+    APIKeyHeader,
+    APIKeyQuery,
+)
 from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from pydantic import ValidationError
@@ -43,8 +48,8 @@ try:
 except ImportError:
     request_context = None  # type: ignore[assignment]
 
-from galaxy import app as galaxy_app
 from galaxy import (
+    app as galaxy_app,
     model,
     web,
 )
@@ -66,6 +71,10 @@ from galaxy.work.context import (
     GalaxyAbstractResponse,
     SessionRequestContext,
 )
+
+api_key_query = APIKeyQuery(name="key", auto_error=False)
+api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+api_key_cookie = APIKeyCookie(name="galaxysession", auto_error=False)
 
 
 def get_app() -> StructuredApp:
@@ -111,7 +120,7 @@ def get_session_manager(app: StructuredApp = DependsOnApp) -> GalaxySessionManag
 def get_session(
     session_manager: GalaxySessionManager = Depends(get_session_manager),
     security: IdEncodingHelper = depends(IdEncodingHelper),
-    galaxysession: Optional[str] = Cookie(None),
+    galaxysession: str = Security(api_key_cookie),
 ) -> Optional[model.GalaxySession]:
     if galaxysession:
         session_key = security.decode_guid(galaxysession)
@@ -124,8 +133,8 @@ def get_session(
 def get_api_user(
     security: IdEncodingHelper = depends(IdEncodingHelper),
     user_manager: UserManager = depends(UserManager),
-    key: Optional[str] = Query(None),
-    x_api_key: Optional[str] = Header(None),
+    key: str = Security(api_key_query),
+    x_api_key: str = Security(api_key_header),
     run_as: Optional[EncodedDatabaseIdField] = Header(
         default=None,
         title="Run as User",
@@ -450,12 +459,15 @@ class IndexQueryTag(NamedTuple):
     tag: str
     description: str
     alias: Optional[str] = None
+    admin_only: bool = False
 
     def as_markdown(self):
         desc = self.description
         alias = self.alias
         if alias:
             desc += f" (The tag `{alias}` can be used a short hand alias for this tag to filter on this attribute.)"
+        if self.admin_only:
+            desc += " This tag is only available for requests using admin keys and/or sessions."
         return f"`{self.tag}`\n: {desc}"
 
 

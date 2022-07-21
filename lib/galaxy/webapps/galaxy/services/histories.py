@@ -19,8 +19,15 @@ from sqlalchemy import (
     true,
 )
 
-from galaxy import exceptions as glx_exceptions
-from galaxy import model
+from galaxy import (
+    exceptions as glx_exceptions,
+    model,
+)
+from galaxy.celery.tasks import (
+    import_model_store,
+    prepare_history_download,
+    write_history_to,
+)
 from galaxy.files.uris import validate_uri_access
 from galaxy.managers.citations import CitationsManager
 from galaxy.managers.context import ProvidesHistoryContext
@@ -32,6 +39,7 @@ from galaxy.managers.histories import (
     HistorySerializer,
 )
 from galaxy.managers.users import UserManager
+from galaxy.model.store import payload_to_source_uri
 from galaxy.schema import (
     FilterQueryParams,
     SerializationParams,
@@ -39,6 +47,9 @@ from galaxy.schema import (
 from galaxy.schema.fields import EncodedDatabaseIdField
 from galaxy.schema.schema import (
     AnyHistoryView,
+    AsyncFile,
+    AsyncTaskResultSummary,
+    CreateHistoryFromStore,
     CreateHistoryPayload,
     CustomBuildsMetadataResponse,
     ExportHistoryArchivePayload,
@@ -48,11 +59,25 @@ from galaxy.schema.schema import (
     JobIdResponse,
     JobImportHistoryResponse,
     LabelValuePair,
+    StoreExportPayload,
+    WriteStoreToPayload,
+)
+from galaxy.schema.tasks import (
+    GenerateHistoryDownload,
+    ImportModelStoreTaskRequest,
+    WriteHistoryTo,
 )
 from galaxy.schema.types import LatestLiteral
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import restore_text
-from galaxy.webapps.galaxy.services.base import ServiceBase
+from galaxy.web.short_term_storage import ShortTermStorageAllocator
+from galaxy.webapps.galaxy.services.base import (
+    async_task_summary,
+    ConsumesModelStores,
+    model_store_storage_target,
+    ServesExportStores,
+    ServiceBase,
+)
 from galaxy.webapps.galaxy.services.sharable import ShareableService
 
 log = logging.getLogger(__name__)
@@ -60,7 +85,7 @@ log = logging.getLogger(__name__)
 DEFAULT_ORDER_BY = "create_time-dsc"
 
 
-class HistoriesService(ServiceBase):
+class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
     """Common interface/service logic for interactions with histories in the context of the API.
 
     Provides the logic of the actions invoked by API controllers and uses type definitions
@@ -77,6 +102,7 @@ class HistoriesService(ServiceBase):
         citations_manager: CitationsManager,
         history_export_view: HistoryExportView,
         filters: HistoryFilters,
+        short_term_storage_allocator: ShortTermStorageAllocator,
     ):
         super().__init__(security)
         self.manager = manager
@@ -87,6 +113,7 @@ class HistoriesService(ServiceBase):
         self.history_export_view = history_export_view
         self.filters = filters
         self.shareable_service = ShareableService(self.manager, self.serializer)
+        self.short_term_storage_allocator = short_term_storage_allocator
 
     def index(
         self,
@@ -173,15 +200,14 @@ class HistoriesService(ServiceBase):
         """Create a new history from scratch, by copying an existing one or by importing
         from URL or File depending on the provided parameters in the payload.
         """
-        if trans.anonymous:
+        copy_this_history_id = payload.history_id
+        if trans.anonymous and not copy_this_history_id:  # Copying/Importing histories is allowed for anonymous users
             raise glx_exceptions.AuthenticationRequired("You need to be logged in to create histories.")
         if trans.user and trans.user.bootstrap_admin_user:
             raise glx_exceptions.RealUserRequiredException("Only real users can create histories.")
         hist_name = None
         if payload.name is not None:
             hist_name = restore_text(payload.name)
-        copy_this_history_id = payload.history_id
-        all_datasets = payload.all_datasets
 
         if payload.archive_source is not None or hasattr(payload.archive_file, "file"):
             archive_source = payload.archive_source
@@ -212,7 +238,9 @@ class HistoriesService(ServiceBase):
             decoded_id = self.decode_id(copy_this_history_id)
             original_history = self.manager.get_accessible(decoded_id, trans.user, current_history=trans.history)
             hist_name = hist_name or (f"Copy of '{original_history.name}'")
-            new_history = original_history.copy(name=hist_name, target_user=trans.user, all_datasets=all_datasets)
+            new_history = original_history.copy(
+                name=hist_name, target_user=trans.user, all_datasets=payload.all_datasets
+            )
 
         # otherwise, create a new empty history
         else:
@@ -227,6 +255,40 @@ class HistoriesService(ServiceBase):
             self.manager.set_current(trans, new_history)
 
         return self._serialize_history(trans, new_history, serialization_params)
+
+    def create_from_store(
+        self,
+        trans,
+        payload: CreateHistoryFromStore,
+        serialization_params: SerializationParams,
+    ) -> AnyHistoryView:
+        self._ensure_can_create_history(trans)
+        object_tracker = self.create_objects_from_store(
+            trans,
+            payload,
+        )
+        return self._serialize_history(trans, object_tracker.new_history, serialization_params)
+
+    def create_from_store_async(
+        self,
+        trans,
+        payload: CreateHistoryFromStore,
+    ) -> AsyncTaskResultSummary:
+        self._ensure_can_create_history(trans)
+        source_uri = payload_to_source_uri(payload)
+        request = ImportModelStoreTaskRequest(
+            user=trans.async_request_user,
+            source_uri=source_uri,
+            for_library=False,
+        )
+        result = import_model_store.delay(request=request)
+        return async_task_summary(result)
+
+    def _ensure_can_create_history(self, trans):
+        if trans.anonymous:
+            raise glx_exceptions.AuthenticationRequired("You need to be logged in to create histories.")
+        if trans.user and trans.user.bootstrap_admin_user:
+            raise glx_exceptions.RealUserRequiredException("Only real users can create histories.")
 
     def _save_upload_file_tmp(self, upload_file) -> str:
         try:
@@ -264,6 +326,32 @@ class HistoriesService(ServiceBase):
         else:
             history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
         return self._serialize_history(trans, history, serialization_params)
+
+    def prepare_download(
+        self, trans: ProvidesHistoryContext, history_id: EncodedDatabaseIdField, payload: StoreExportPayload
+    ) -> AsyncFile:
+        history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
+        short_term_storage_target = model_store_storage_target(
+            self.short_term_storage_allocator,
+            history.name,
+            payload.model_store_format,
+        )
+        request = GenerateHistoryDownload(
+            history_id=history.id,
+            short_term_storage_request_id=short_term_storage_target.request_id,
+            user=trans.async_request_user,
+            **payload.dict(),
+        )
+        result = prepare_history_download.delay(request=request)
+        return AsyncFile(storage_request_id=short_term_storage_target.request_id, task=async_task_summary(result))
+
+    def write_store(
+        self, trans: ProvidesHistoryContext, history_id: EncodedDatabaseIdField, payload: WriteStoreToPayload
+    ) -> AsyncTaskResultSummary:
+        history = self.manager.get_accessible(self.decode_id(history_id), trans.user, current_history=trans.history)
+        request = WriteHistoryTo(user=trans.async_request_user, history_id=history.id, **payload.dict())
+        result = write_history_to.delay(request=request)
+        return async_task_summary(result)
 
     def update(
         self,

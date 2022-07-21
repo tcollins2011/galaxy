@@ -1491,6 +1491,7 @@ class TestHistoryDatasetAssociation(BaseTest):
         purged = False
         validated_state = "j"
         validated_state_message = "k"
+        metadata_deferred = False
 
         obj = cls_()
         obj.history = history
@@ -1518,6 +1519,7 @@ class TestHistoryDatasetAssociation(BaseTest):
         obj.validated_state = validated_state
         obj.validated_state_message = validated_state_message
         obj.hidden_beneath_collection_instance = history_dataset_collection_association
+        obj.metadata_deferred = metadata_deferred
 
         with dbcleanup(session, obj) as obj_id:
             stored_obj = get_stored_obj(session, cls_, obj_id)
@@ -1548,6 +1550,7 @@ class TestHistoryDatasetAssociation(BaseTest):
             assert stored_obj.purged == purged
             assert stored_obj.validated_state == validated_state
             assert stored_obj.validated_state_message == validated_state_message
+            assert stored_obj.metadata_deferred is metadata_deferred
             assert stored_obj.hidden_beneath_collection_instance_id == history_dataset_collection_association.id
 
         delete_from_database(session, [copied_from_hda, parent])
@@ -2802,16 +2805,13 @@ class TestJobStateHistory(BaseTest):
     def test_columns(self, session, cls_, job):
         state, info = job.state, job.info
         create_time = now()
-        update_time = create_time + timedelta(hours=1)
         obj = cls_(job)
         obj.create_time = create_time
-        obj.update_time = update_time
 
         with dbcleanup(session, obj) as obj_id:
             stored_obj = get_stored_obj(session, cls_, obj_id)
             assert stored_obj.id == obj_id
             assert stored_obj.create_time == create_time
-            assert stored_obj.update_time == update_time
             assert stored_obj.job_id == job.id
             assert stored_obj.state == state
             assert stored_obj.info == info
@@ -3297,6 +3297,7 @@ class TestLibraryDatasetDatasetAssociation(BaseTest):
         validated_state_message = "k"
         visible = True
         message = "m"
+        metadata_deferred = False
         _metadata = {"key": "value"}
         copied_from_ldda = library_dataset_dataset_association_factory()
         parent = library_dataset_dataset_association_factory()
@@ -3324,6 +3325,7 @@ class TestLibraryDatasetDatasetAssociation(BaseTest):
         obj.validated_state_message = validated_state_message
         obj.visible = visible
         obj.extended_metadata = extended_metadata
+        obj.metadata_deferred = metadata_deferred
         obj.user = user
         obj.message = message
         obj._metadata = _metadata
@@ -3357,6 +3359,7 @@ class TestLibraryDatasetDatasetAssociation(BaseTest):
             # However, the following assertion verifies that it exists and has been initialized correctly.
             assert stored_obj.metadata.parent.id == obj_id
             assert stored_obj._metadata == _metadata
+            assert stored_obj.metadata_deferred is metadata_deferred
 
         delete_from_database(session, [copied_from_ldda, parent])
 

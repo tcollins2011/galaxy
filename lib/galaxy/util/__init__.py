@@ -13,6 +13,7 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import smtplib
 import stat
@@ -30,6 +31,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from hashlib import md5
 from os.path import relpath
+from pathlib import Path
 from urllib.parse import (
     urlencode,
     urlparse,
@@ -53,13 +55,11 @@ except ImportError:
 LXML_AVAILABLE = True
 try:
     from lxml import etree
-
-    Element = etree._Element
+    from lxml.etree import _Element as Element
 except ImportError:
     LXML_AVAILABLE = False
     import xml.etree.ElementTree as etree  # type: ignore[assignment,no-redef]
-
-    Element = etree.Element
+    from xml.etree.ElementTree import Element  # noqa: F401  # type: ignore[assignment,no-redef]
 
 try:
     import docutils.core as docutils_core
@@ -75,6 +75,14 @@ from .path import (  # noqa: F401
     safe_makedirs,
     safe_relpath,
 )
+
+try:
+    shlex_join = shlex.join  # type: ignore[attr-defined]
+except AttributeError:
+    # Python < 3.8
+    def shlex_join(split_command):
+        return " ".join(map(shlex.quote, split_command))
+
 
 inflector = Inflector()
 
@@ -264,7 +272,7 @@ def unique_id(KEY_SIZE=128):
     return md5(random_bits).hexdigest()
 
 
-def parse_xml(fname, strip_whitespace=True, remove_comments=True):
+def parse_xml(fname: typing.Union[str, Path], strip_whitespace=True, remove_comments=True):
     """Returns a parsed xml tree"""
     parser = None
     if remove_comments and LXML_AVAILABLE:
@@ -272,7 +280,7 @@ def parse_xml(fname, strip_whitespace=True, remove_comments=True):
         # but lxml doesn't do this by default
         parser = etree.XMLParser(remove_comments=remove_comments)
     try:
-        tree = etree.parse(fname, parser=parser)
+        tree = etree.parse(str(fname), parser=parser)
         root = tree.getroot()
         if strip_whitespace:
             for elem in root.iter("*"):

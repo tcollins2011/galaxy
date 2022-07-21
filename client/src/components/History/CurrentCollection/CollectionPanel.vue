@@ -23,12 +23,11 @@
                         <Listing :items="payload" :loading="loading" @scroll="onScroll">
                             <template v-slot:item="{ item }">
                                 <ContentItem
-                                    :id="item.element_index"
+                                    :id="item.element_index + 1"
                                     :item="item.object"
                                     :name="item.element_identifier"
                                     :expand-dataset="isExpanded(item)"
                                     :is-dataset="item.element_type == 'hda'"
-                                    :is-history-item="false"
                                     @update:expand-dataset="setExpanded(item, $event)"
                                     @view-collection="onViewSubCollection" />
                             </template>

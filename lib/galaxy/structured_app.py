@@ -38,6 +38,7 @@ from galaxy.workflow.trs_proxy import TrsProxy
 
 if TYPE_CHECKING:
     from galaxy.jobs import JobConfiguration
+    from galaxy.managers.workflows import WorkflowsManager
     from galaxy.tools.data import ToolDataTableManager
 
 
@@ -83,6 +84,7 @@ class MinimalApp(BasicSharedApp):
 
 
 class MinimalManagerApp(MinimalApp):
+    # Minimal App that is sufficient to run Celery tasks
     file_sources: ConfiguredFileSources
     genome_builds: GenomeBuilds
     dataset_collection_manager: Any  # 'galaxy.managers.collections.DatasetCollectionManager'
@@ -97,6 +99,8 @@ class MinimalManagerApp(MinimalApp):
     user_manager: Any
     job_config: "JobConfiguration"
     job_manager: Any  # galaxy.jobs.manager.JobManager
+    job_metrics: "JobMetrics"
+    dynamic_tool_manager: Any  # 'galaxy.managers.tools.DynamicToolManager'
 
     @property
     def is_job_handler(self) -> bool:
@@ -134,12 +138,11 @@ class StructuredApp(MinimalManagerApp):
     queue_worker: Any  # 'galaxy.queue_worker.GalaxyQueueWorker'
     history_manager: Any  # 'galaxy.managers.histories.HistoryManager'
     hda_manager: Any  # 'galaxy.managers.hdas.HDAManager'
-    workflow_manager: Any  # 'galaxy.managers.workflows.WorkflowsManager'
+    workflow_manager: "WorkflowsManager"
     workflow_contents_manager: Any  # 'galaxy.managers.workflows.WorkflowContentsManager'
     library_folder_manager: Any  # 'galaxy.managers.folders.FolderManager'
     library_manager: Any  # 'galaxy.managers.libraries.LibraryManager'
     role_manager: Any  # 'galaxy.managers.roles.RoleManager'
-    dynamic_tool_manager: Any  # 'galaxy.managers.tools.DynamicToolManager'
     data_provider_registry: Any  # 'galaxy.visualization.data_providers.registry.DataProviderRegistry'
     tool_data_tables: "ToolDataTableManager"
     genomes: Any  # 'galaxy.visualization.genomes.Genomes'

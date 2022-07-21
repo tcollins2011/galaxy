@@ -27,8 +27,8 @@ from os.path import (
     pardir,
     realpath,
     relpath,
+    sep as separator,
 )
-from os.path import sep as separator
 from pathlib import Path
 
 try:
@@ -365,7 +365,7 @@ def external_chown(path, pwent, external_chown_script, description="file"):
 
         cmd = shlex.split(external_chown_script)
         cmd.extend([path, pwent[0], str(pwent[3])])
-        log.debug(f"Changing ownership of {path} with: {' '.join(map(shlex.quote, cmd))}")
+        log.debug(f"Changing ownership of {path} with: '{galaxy.util.shlex_join(cmd)}'")
         galaxy.util.commands.execute(cmd)
         return True
     except galaxy.util.commands.CommandLineException as e:

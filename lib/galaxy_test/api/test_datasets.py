@@ -6,9 +6,16 @@ from typing import (
     List,
 )
 
+from galaxy.model.unittest_utils.store_fixtures import (
+    deferred_hda_model_store_dict,
+    one_hda_model_store_dict,
+    TEST_SOURCE_URI,
+)
+from galaxy_test.base.api_asserts import assert_has_keys
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
+    skip_if_github_down,
     skip_without_datatype,
     skip_without_tool,
 )
@@ -124,6 +131,43 @@ class DatasetsApiTestCase(ApiTestCase):
         index_response = self._get("datasets", payload).json()
         assert len(index_response) == 0
 
+    def test_search_by_tag_case_insensitive(self):
+        history_id = self.dataset_populator.new_history()
+        hda_id = self.dataset_populator.new_dataset(history_id)["id"]
+        update_payload = {
+            "tags": ["name:new_TAG", "cool:another_TAG"],
+        }
+        updated_hda = self._put(f"histories/{history_id}/contents/{hda_id}", update_payload, json=True).json()
+        assert "name:new_TAG" in updated_hda["tags"]
+        assert "cool:another_TAG" in updated_hda["tags"]
+        payload = {
+            "limit": 10,
+            "offset": 0,
+            "q": ["history_content_type", "tag"],
+            "qv": ["dataset", "name:new_tag"],
+            "history_id": history_id,
+        }
+        index_response = self._get("datasets", payload).json()
+        assert len(index_response) == 1
+        payload = {
+            "limit": 10,
+            "offset": 0,
+            "q": ["history_content_type", "tag-contains"],
+            "qv": ["dataset", "new_tag"],
+            "history_id": history_id,
+        }
+        index_response = self._get("datasets", payload).json()
+        assert len(index_response) == 1
+        payload = {
+            "limit": 10,
+            "offset": 0,
+            "q": ["history_content_type", "tag-contains"],
+            "qv": ["dataset", "notag"],
+            "history_id": history_id,
+        }
+        index_response = self._get("datasets", payload).json()
+        assert len(index_response) == 0
+
     def test_search_by_tool_id(self):
         self.dataset_populator.new_dataset(self.history_id)
         payload = {
@@ -171,6 +215,39 @@ class DatasetsApiTestCase(ApiTestCase):
         }
         result = self._get("datasets", payload).json()
         assert len(result) == 0
+
+    def test_search_by_extension(self):
+        self.dataset_populator.new_dataset(self.history_id, wait=True)
+        payload = {
+            "q": ["extension"],
+            "qv": ["txt"],
+            "history_id": self.history_id,
+        }
+        assert len(self._get("datasets", payload).json()) == 1
+        payload = {
+            "q": ["extension"],
+            "qv": ["bam"],
+            "history_id": self.history_id,
+        }
+        assert len(self._get("datasets", payload).json()) == 0
+        payload = {
+            "q": ["extension-in"],
+            "qv": ["bam,txt"],
+            "history_id": self.history_id,
+        }
+        assert len(self._get("datasets", payload).json()) == 1
+        payload = {
+            "q": ["extension-like"],
+            "qv": ["t%t"],
+            "history_id": self.history_id,
+        }
+        assert len(self._get("datasets", payload).json()) == 1
+        payload = {
+            "q": ["extension-like"],
+            "qv": ["b%m"],
+            "history_id": self.history_id,
+        }
+        assert len(self._get("datasets", payload).json()) == 0
 
     def test_invalid_search(self):
         payload = {
@@ -292,6 +369,43 @@ class DatasetsApiTestCase(ApiTestCase):
         )
         self._assert_status_code_is(invalidly_updated_hda_response, 400)
 
+    @skip_without_tool("cat_data_and_sleep")
+    def test_delete_cancels_job(self):
+        self._run_cancel_job(use_query_params=False)
+
+    @skip_without_tool("cat_data_and_sleep")
+    def test_delete_cancels_job_with_query_params(self):
+        self._run_cancel_job(use_query_params=True)
+
+    def _run_cancel_job(self, use_query_params=False):
+        hda_id = self.dataset_populator.new_dataset(self.history_id)["id"]
+        inputs = {
+            "input1": {"src": "hda", "id": hda_id},
+            "sleep_time": 10,
+        }
+        run_response = self.dataset_populator.run_tool_raw(
+            "cat_data_and_sleep",
+            inputs,
+            self.history_id,
+        ).json()
+        output_hda_id = run_response["outputs"][0]["id"]
+        job_id = run_response["jobs"][0]["id"]
+
+        job_details = self.dataset_populator.get_job_details(job_id).json()
+        assert job_details["state"] in ("new", "queued", "running"), job_details
+
+        # Use stop_job to cancel the creating job
+        delete_response = self.dataset_populator.delete_dataset(
+            self.history_id, output_hda_id, stop_job=True, use_query_params=use_query_params
+        )
+        self._assert_status_code_is_ok(delete_response)
+        deleted_hda = delete_response.json()
+        assert deleted_hda["deleted"], deleted_hda
+
+        # The job should be cancelled
+        deleted_job_details = self.dataset_populator.get_job_details(job_id).json()
+        assert deleted_job_details["state"] in ("deleting", "deleted"), deleted_job_details
+
     def test_delete_batch(self):
         num_datasets = 4
         dataset_map: Dict[int, str] = {}
@@ -385,3 +499,53 @@ class DatasetsApiTestCase(ApiTestCase):
         archive = zipfile.ZipFile(BytesIO(response.content))
         namelist = archive.namelist()
         assert len(namelist) == 4, f"Expected 3 elements in [{namelist}]"
+
+    def test_storage_show(self):
+        hda = self.dataset_populator.new_dataset(self.history_id, wait=True)
+        hda_details = self.dataset_populator.get_history_dataset_details(self.history_id, dataset=hda)
+        dataset_id = hda_details["dataset_id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(dataset_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description")
+
+    def test_storage_show_on_discarded(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=one_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        hda_id = as_list[0]["id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(hda_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description", "sources", "hashes")
+
+        assert storage_info_dict["object_store_id"] is None
+        sources = storage_info_dict["sources"]
+        assert len(sources) == 1
+        assert sources[0]["source_uri"] == TEST_SOURCE_URI
+
+    def test_storage_show_on_deferred(self):
+        as_list = self.dataset_populator.create_contents_from_store(
+            self.history_id,
+            store_dict=deferred_hda_model_store_dict(),
+        )
+        assert len(as_list) == 1
+        hda_id = as_list[0]["id"]
+        storage_info_dict = self.dataset_populator.dataset_storage_info(hda_id)
+        assert_has_keys(storage_info_dict, "object_store_id", "name", "description", "sources", "hashes")
+
+        assert storage_info_dict["object_store_id"] is None
+        sources = storage_info_dict["sources"]
+        assert len(sources) == 1
+        assert sources[0]["source_uri"] == TEST_SOURCE_URI
+
+    @skip_if_github_down
+    def test_display_application_link(self):
+        item = {
+            "src": "url",
+            "url": "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/1.bam",
+            "ext": "bam",
+        }
+        output = self.dataset_populator.fetch_hda(self.history_id, item)
+        dataset_details = self.dataset_populator.get_history_dataset_details(
+            self.history_id, dataset=output, assert_ok=True
+        )
+        assert "display_application/" in dataset_details["display_apps"][0]["links"][0]["href"]

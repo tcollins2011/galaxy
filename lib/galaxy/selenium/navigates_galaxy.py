@@ -1,4 +1,4 @@
-"""A mixing that extends a HasDriver class with Galaxy-specific utilities.
+"""A mixin that extends a HasDriver class with Galaxy-specific utilities.
 
 Implementer must provide a self.build_url method to target Galaxy.
 """
@@ -26,13 +26,13 @@ import yaml
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from galaxy.util import DEFAULT_SOCKET_TIMEOUT
-from . import sizzle
-from .components import (
+from galaxy.navigation.components import (
     Component,
     HasText,
 )
-from .data import load_root_component
+from galaxy.navigation.data import load_root_component
+from galaxy.util import DEFAULT_SOCKET_TIMEOUT
+from . import sizzle
 from .has_driver import (
     exception_indicates_click_intercepted,
     exception_indicates_not_clickable,
@@ -417,6 +417,9 @@ class NavigatesGalaxy(HasDriver):
     def history_panel_wait_for_hid_ok(self, hid, allowed_force_refreshes=0):
         return self.history_panel_wait_for_hid_state(hid, "ok", allowed_force_refreshes=allowed_force_refreshes)
 
+    def history_panel_wait_for_hid_deferred(self, hid, allowed_force_refreshes=0):
+        return self.history_panel_wait_for_hid_state(hid, "deferred", allowed_force_refreshes=allowed_force_refreshes)
+
     def history_panel_item_component(self, history_item=None, hid=None, multi_history_panel=False):
         if self.is_beta_history():
             assert hid
@@ -701,7 +704,9 @@ class NavigatesGalaxy(HasDriver):
     def perform_upload_of_pasted_content(self, paste_data, **kwd):
         self._perform_upload(paste_data=paste_data, **kwd)
 
-    def _perform_upload(self, test_path=None, paste_data=None, ext=None, genome=None, ext_all=None, genome_all=None):
+    def _perform_upload(
+        self, test_path=None, paste_data=None, ext=None, genome=None, ext_all=None, genome_all=None, deferred=None
+    ):
         self.home()
         self.upload_start_click()
 
@@ -722,9 +727,39 @@ class NavigatesGalaxy(HasDriver):
             self.wait_for_selector_visible(".upload-genome")
             self.select2_set_value(".upload-genome", genome)
 
+        if deferred is not None:
+            upload = self.components.upload
+            upload.settings_button(n=0).wait_for_and_click()
+            upload.settings.wait_for_visible()
+            setting = upload.setting_deferred.wait_for_visible()
+            classes = setting.get_attribute("class").split(" ")
+            if deferred is True and "fa-check-square-o" not in classes:
+                setting.click()
+            elif deferred is False and "fa-check-square-o" in classes:
+                setting.click()
+
         self.upload_start()
 
         self.wait_for_and_click_selector("button#btn-close")
+
+    def perform_upload_of_composite_dataset_pasted_data(self, ext, paste_content):
+        self.home()
+        self.upload_start_click()
+        self.components.upload.tab(tab="composite").wait_for_and_click()
+        self.upload_set_footer_extension(ext, tab_id="composite")
+
+        table = self.components.upload.composite.table().wait_for_visible()
+        source_select_buttons = table.find_elements_by_css_selector("div.dropdown button.btn")
+        paste_buttons = table.find_elements_by_css_selector(".upload-source .dropdown-menu .dropdown-item .fa-edit")
+        textareas = table.find_elements_by_css_selector("div.upload-text-column textarea.upload-text-content")
+
+        for i in range(len(paste_content)):
+            source_select_buttons[i].click()
+            paste_buttons[i].click()
+            textareas[i].send_keys(paste_content[i])
+
+        self.upload_start(tab_id="composite")
+        self.components.upload.composite.close.wait_for_and_click()
 
     def upload_list(self, test_paths, name="test", ext=None, genome=None, hide_source_items=True):
         self._collection_upload_start(test_paths, ext, genome, "List")
@@ -1234,6 +1269,7 @@ class NavigatesGalaxy(HasDriver):
         alert = self.driver.switch_to.alert
         alert.send_keys(new_name)
         alert.accept()
+        self.components.workflows.workflow_with_name(workflow_name=new_name).wait_for_visible()
 
     @retry_during_transitions
     def workflow_index_name(self, workflow_index=0):
@@ -1342,15 +1378,14 @@ class NavigatesGalaxy(HasDriver):
         self.sleep_for(self.wait_types.UX_RENDER)
         self.click_button_new_workflow()
         self.sleep_for(self.wait_types.UX_RENDER)
-        form_element = self.driver.find_element_by_id("submit")
         name = self._get_random_name()
-        annotation = annotation or self._get_random_name()
-        inputs = self.driver.find_elements_by_class_name("ui-input")
+        name_component = self.components.workflows.create.name
         if clear_placeholder:
-            inputs[0].clear()
-        inputs[0].send_keys(name)
-        inputs[1].send_keys(annotation)
-        form_element.click()
+            name_component.wait_for_visible().clear()
+        name_component.wait_for_and_send_keys(name)
+        annotation = annotation or self._get_random_name()
+        self.components.workflows.create.annotation.wait_for_and_send_keys(annotation)
+        self.components.workflows.create.submit.wait_for_and_click()
         return name
 
     def invocation_index_table_elements(self):
@@ -1363,6 +1398,12 @@ class NavigatesGalaxy(HasDriver):
             tool_link = self.components.tool_panel.outer_tool_link(tool_id=tool_id)
         else:
             tool_link = self.components.tool_panel.tool_link(tool_id=tool_id)
+        tool_element = tool_link.wait_for_present()
+        self.driver.execute_script("arguments[0].scrollIntoView(true);", tool_element)
+        tool_link.wait_for_and_click()
+
+    def datasource_tool_open(self, tool_id):
+        tool_link = self.components.tool_panel.data_source_tool_link(tool_id=tool_id)
         tool_element = tool_link.wait_for_present()
         self.driver.execute_script("arguments[0].scrollIntoView(true);", tool_element)
         tool_link.wait_for_and_click()
@@ -1567,7 +1608,11 @@ class NavigatesGalaxy(HasDriver):
         if self.is_beta_history():
             editable_text_input_element.clear()
         editable_text_input_element.send_keys(new_name)
-        self.send_enter(editable_text_input_element)
+        if not self.is_beta_history():
+            # in the new history 'enter' submits the change, which we don't want
+            # to automatically do here since we may edit other fields prior to
+            # submitting
+            self.send_enter(editable_text_input_element)
         return editable_text_input_element
 
     def history_panel_name_input(self):
@@ -1655,10 +1700,10 @@ class NavigatesGalaxy(HasDriver):
         viz_menu_selectors = f"{self.history_panel_item_selector(hid)} a.visualization-link"
         return self.driver.find_elements_by_css_selector(viz_menu_selectors)
 
-    def history_panel_item_get_nametags(self, hid):
+    def history_panel_item_get_tags(self, hid):
         item_component = self.history_panel_item_component(hid=hid)
         item_component.wait_for_visible()
-        return [e.text for e in item_component.nametags.all()]
+        return [e.text for e in item_component.alltags.all()]
 
     def history_panel_item_available_visualizations(self, hid):
         # Precondition: viz menu has been opened with history_panel_item_click_visualization_menu
@@ -1889,12 +1934,20 @@ class NavigatesGalaxy(HasDriver):
         self.components._.messages.error.assert_absent_or_hidden()
 
     def run_tour_step(self, step, step_index, tour_callback):
+        element_str = step.get("element", None)
+        if element_str is None:
+            component = step.get("component", None)
+            if component is not None:
+                element_str = self.components.resolve_component_locator(component).locator
+
         preclick = step.get("preclick", [])
+        if preclick is True:
+            preclick = [element_str]
+
         for preclick_selector in preclick:
             print(f"(Pre)Clicking {preclick_selector}")
             self._tour_wait_for_and_click_element(preclick_selector)
 
-        element_str = step.get("element", None)
         if element_str is not None:
             print(f"Waiting for element {element_str}")
             element = self.tour_wait_for_element_present(element_str)
@@ -1907,6 +1960,8 @@ class NavigatesGalaxy(HasDriver):
         tour_callback.handle_step(step, step_index)
 
         postclick = step.get("postclick", [])
+        if postclick is True:
+            postclick = [element_str]
         for postclick_selector in postclick:
             print(f"(Post)Clicking {postclick_selector}")
             self._tour_wait_for_and_click_element(postclick_selector)

@@ -10,6 +10,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
 )
 
 from galaxy.util.path import safe_walk
@@ -181,8 +182,8 @@ class ToolSource(metaclass=ABCMeta):
         return None
 
     @abstractmethod
-    def parse_requirements_and_containers(self):
-        """Return pair of ToolRequirement and ContainerDescription lists."""
+    def parse_requirements_and_containers(self) -> Tuple:
+        """Return triple of ToolRequirement, ContainerDescription and ResourceRequirement lists."""
 
     @abstractmethod
     def parse_input_pages(self):

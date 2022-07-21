@@ -107,7 +107,6 @@ class MockApp(di.Container, GalaxyDataTestApp):
         self.auth_manager = AuthManager(self.config)
         self.user_manager = UserManager(self)
         self.execution_timer_factory = Bunch(get_timer=StructuredExecutionTimer)
-        self.file_sources = Bunch(to_dict=lambda *args, **kwargs: {})
         self.interactivetool_manager = Bunch(create_interactivetool=lambda *args, **kwargs: None)
         self.is_job_handler = False
         self.biotools_metadata_source = None
@@ -151,6 +150,9 @@ class MockAppConfig(GalaxyDataTestConfig, CommonConfigurationMixin):
 
         self.expose_dataset_path = True
         self.allow_user_dataset_purge = True
+        self.allow_user_creation = True
+        self.email_domain_allowlist_content = None
+        self.email_domain_blocklist_content = None
         self.enable_old_display_applications = True
         self.redact_username_in_logs = False
         self.auth_config_file = "config/auth_conf.xml.sample"

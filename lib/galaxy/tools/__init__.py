@@ -120,7 +120,10 @@ from galaxy.util.bunch import Bunch
 from galaxy.util.dictifiable import Dictifiable
 from galaxy.util.expressions import ExpressionContext
 from galaxy.util.form_builder import SelectField
-from galaxy.util.json import safe_loads
+from galaxy.util.json import (
+    safe_loads,
+    swap_inf_nan,
+)
 from galaxy.util.rules_dsl import RuleSet
 from galaxy.util.template import (
     fill_template,
@@ -132,8 +135,10 @@ from galaxy.util.tool_shed.common_util import (
 )
 from galaxy.version import VERSION_MAJOR
 from galaxy.work.context import proxy_work_context_for_history
-from .execute import execute as execute_job
-from .execute import MappingParameters
+from .execute import (
+    execute as execute_job,
+    MappingParameters,
+)
 
 if TYPE_CHECKING:
     from galaxy.managers.jobs import JobSearch
@@ -286,6 +291,13 @@ def create_tool_from_source(app, tool_source, config_file=None, **kwds):
         ToolClass = Tool
     tool = ToolClass(config_file, tool_source, app, **kwds)
     return tool
+
+
+def create_tool_from_representation(
+    app, raw_tool_source: str, tool_dir: str, tool_source_class="XmlToolSource"
+) -> "Tool":
+    tool_source = get_tool_source(tool_source_class=tool_source_class, raw_tool_source=raw_tool_source)
+    return create_tool_from_source(app, tool_source=tool_source, tool_dir=tool_dir)
 
 
 class ToolBox(BaseGalaxyToolBox):
@@ -1031,9 +1043,10 @@ class Tool(Dictifiable):
         self.__parse_tests(tool_source)
 
         # Requirements (dependencies)
-        requirements, containers = tool_source.parse_requirements_and_containers()
+        requirements, containers, resource_requirements = tool_source.parse_requirements_and_containers()
         self.requirements = requirements
         self.containers = containers
+        self.resource_requirements = resource_requirements
 
         required_files = tool_source.parse_required_files()
         if required_files is None:
@@ -1046,14 +1059,20 @@ class Tool(Dictifiable):
         self.required_files = required_files
 
         self.citations = self._parse_citations(tool_source)
-        ontology_data = expand_ontology_data(
-            tool_source,
-            self.all_ids,
-            self.app.biotools_metadata_source,
-        )
-        self.xrefs = ontology_data.xrefs
-        self.edam_operations = ontology_data.edam_operations
-        self.edam_topics = ontology_data.edam_topics
+        biotools_metadata_source = getattr(self.app, "biotools_metadata_source", None)
+        if biotools_metadata_source:
+            ontology_data = expand_ontology_data(
+                tool_source,
+                self.all_ids,
+                self.app.biotools_metadata_source,
+            )
+            self.xrefs = ontology_data.xrefs
+            self.edam_operations = ontology_data.edam_operations
+            self.edam_topics = ontology_data.edam_topics
+        else:
+            self.xrefs = []
+            self.edam_operations = None
+            self.edam_topics = None
 
         self.__parse_trackster_conf(tool_source)
         # Record macro paths so we can reload a tool if any of its macro has changes
@@ -2445,7 +2464,7 @@ class Tool(Dictifiable):
                 "enctype": self.enctype,
             }
         )
-        return tool_model
+        return swap_inf_nan(tool_model)
 
     def populate_model(self, request_context, inputs, state_inputs, group_inputs, other_values=None):
         """
@@ -2879,10 +2898,16 @@ class SetMetadataTool(Tool):
     requires_setting_metadata = False
     tool_action: "SetMetadataToolAction"
 
-    def regenerate_imported_metadata_if_needed(self, hda, history, job):
+    def regenerate_imported_metadata_if_needed(self, hda, history, user, session_id):
         if hda.has_metadata_files:
             job, *_ = self.tool_action.execute_via_app(
-                self, self.app, job.session_id, history.id, job.user, incoming={"input1": hda}, overwrite=False
+                self,
+                self.app,
+                session_id,
+                history.id,
+                user,
+                incoming={"input1": hda},
+                overwrite=False,
             )
             self.app.job_manager.enqueue(job=job, tool=self)
 

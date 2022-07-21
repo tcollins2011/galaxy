@@ -36,7 +36,11 @@
                     <section v-if="!showAdvanced">
                         <HistoryDetails :history="history" @update:history="$emit('updateHistory', $event)" />
                         <HistoryMessages :history="history" />
-                        <HistoryCounter :history="history" :filter-text.sync="filterText" />
+                        <HistoryCounter
+                            :history="history"
+                            :last-checked="lastChecked"
+                            :filter-text.sync="filterText"
+                            @reloadContents="reloadContents" />
                         <HistoryOperations
                             :history="history"
                             :show-selection="showSelection"
@@ -87,20 +91,30 @@
                                     No data found for selected filter.
                                 </b-alert>
                             </div>
-                            <Listing v-else :items="itemsLoaded" :query-key="queryKey" @scroll="onScroll">
-                                <template v-slot:item="{ item }">
+                            <Listing
+                                v-else
+                                :offset="listOffset"
+                                :items="itemsLoaded"
+                                :query-key="queryKey"
+                                @scroll="onScroll">
+                                <template v-slot:item="{ item, currentOffset }">
                                     <ContentItem
                                         v-if="!invisible[item.hid]"
+                                        is-history-item
                                         :id="item.hid"
                                         :item="item"
                                         :name="item.name"
                                         :expand-dataset="isExpanded(item)"
                                         :is-dataset="isDataset(item)"
+                                        :highlight="getHighlight(item)"
                                         :selected="isSelected(item)"
                                         :selectable="showSelection"
+                                        @tag-click="onTagClick"
+                                        @tag-change="onTagChange"
+                                        @toggleHighlights="toggleHighlights"
                                         @update:expand-dataset="setExpanded(item, $event)"
                                         @update:selected="setSelected(item, $event)"
-                                        @view-collection="$emit('view-collection', item)"
+                                        @view-collection="$emit('view-collection', item, currentOffset)"
                                         @delete="onDelete(item)"
                                         @undelete="onUndelete(item)"
                                         @unhide="onUnhide(item)" />
@@ -120,6 +134,7 @@ import { HistoryItemsProvider } from "components/providers/storeProviders";
 import LoadingSpan from "components/LoadingSpan";
 import ContentItem from "components/History/Content/ContentItem";
 import { deleteContent, updateContentFields } from "components/History/model/queries";
+import { getHighlights } from "components/History/Content/model/highlights";
 import ExpandedItems from "components/History/Content/ExpandedItems";
 import SelectedItems from "components/History/Content/SelectedItems";
 import Listing from "components/History/Layout/Listing";
@@ -127,12 +142,13 @@ import HistoryCounter from "./HistoryCounter";
 import HistoryOperations from "./HistoryOperations/Index";
 import HistoryDetails from "./HistoryDetails";
 import HistoryEmpty from "./HistoryEmpty";
-import HistoryFilters from "./HistoryFilters";
+import HistoryFilters from "./HistoryFilters/HistoryFilters";
 import HistoryMessages from "./HistoryMessages";
 import HistorySelectionOperations from "./HistoryOperations/SelectionOperations";
 import HistorySelectionStatus from "./HistoryOperations/SelectionStatus";
 import SelectionChangeWarning from "./HistoryOperations/SelectionChangeWarning";
 import OperationErrorDialog from "./HistoryOperations/OperationErrorDialog";
+import { rewatchHistory } from "store/historyStore/model/watchHistory";
 
 export default {
     components: {
@@ -154,11 +170,14 @@ export default {
         OperationErrorDialog,
     },
     props: {
+        listOffset: { type: Number, default: 0 },
         history: { type: Object, required: true },
     },
     data() {
         return {
             filterText: "",
+            highlights: {},
+            highlightsKey: null,
             invisible: {},
             offset: 0,
             showAdvanced: false,
@@ -188,19 +207,31 @@ export default {
         isProcessing() {
             return this.operationRunning >= this.history.update_time;
         },
+        /** @returns {Date} */
+        lastChecked() {
+            return this.$store.getters.getLastCheckedTime();
+        },
     },
     watch: {
         queryKey() {
             this.invisible = {};
             this.offset = 0;
+            this.resetHighlights();
         },
         historyId(newVal, oldVal) {
             if (newVal !== oldVal) {
                 this.operationRunning = null;
+                this.resetHighlights();
             }
         },
     },
     methods: {
+        getHighlight(item) {
+            return this.highlights[this.getItemKey(item)];
+        },
+        getItemKey(item) {
+            return `${item.id}-${item.history_content_type}`;
+        },
         hasMatches(items) {
             return !!items && items.length > 0;
         },
@@ -227,12 +258,38 @@ export default {
             this.setInvisible(item);
             updateContentFields(item, { visible: true });
         },
+        reloadContents() {
+            rewatchHistory();
+        },
         setInvisible(item) {
             Vue.set(this.invisible, item.hid, true);
+        },
+        onTagChange(item, newTags) {
+            item.tags = newTags;
+        },
+        onTagClick(tag) {
+            if (this.filterText == "tag:" + tag) {
+                this.filterText = "";
+            } else {
+                this.filterText = "tag:" + tag;
+            }
         },
         onOperationError(error) {
             console.debug("OPERATION ERROR", error);
             this.operationError = error;
+        },
+        async toggleHighlights(item) {
+            const key = this.getItemKey(item);
+            if (this.highlightsKey != key) {
+                this.highlightsKey = key;
+                this.highlights = await getHighlights(item, key);
+            } else {
+                this.resetHighlights();
+            }
+        },
+        resetHighlights() {
+            this.highlights = {};
+            this.highlightsKey = null;
         },
     },
 };

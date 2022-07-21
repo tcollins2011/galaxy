@@ -2,7 +2,10 @@
 API operations on the contents of a history dataset.
 """
 import logging
-from io import IOBase
+from io import (
+    BytesIO,
+    IOBase,
+)
 from typing import (
     Any,
     cast,
@@ -255,6 +258,8 @@ class FastAPIDatasets:
                 return FileResponse(file_name, headers=headers)
         elif isinstance(display_data, ZipstreamWrapper):
             return StreamingResponse(display_data.response(), headers=headers)
+        elif isinstance(display_data, bytes):
+            return StreamingResponse(BytesIO(display_data), headers=headers)
         return StreamingResponse(display_data, headers=headers)
 
     @router.get(
@@ -263,10 +268,18 @@ class FastAPIDatasets:
         tags=["histories"],
         response_class=FileResponse,
     )
+    @router.get(
+        "/api/datasets/{history_content_id}/metadata_file",
+        summary="Returns the metadata file associated with this history item.",
+        response_class=FileResponse,
+    )
     def get_metadata_file(
         self,
         trans=DependsOnTrans,
-        history_id: EncodedDatabaseIdField = HistoryIDPathParam,
+        history_id: Optional[EncodedDatabaseIdField] = Query(
+            default=None,
+            description="The encoded database identifier of the History.",
+        ),
         history_content_id: EncodedDatabaseIdField = DatasetIDPathParam,
         metadata_file: str = Query(
             ...,
