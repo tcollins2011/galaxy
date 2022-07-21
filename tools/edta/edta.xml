@@ -11,7 +11,7 @@
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
     ## General Run Command
-
+    ## Changing a single line here to add to the github repo
     ln -s '$genome' ./input.fa &&
     perl -cp /edta/EDTA.pl
     --genome input.fa
