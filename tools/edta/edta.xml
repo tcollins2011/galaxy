@@ -6,6 +6,9 @@
         <token name="@WRAPPER_VERSION@">2.0.0</token>
         <token name="@VERSION_SUFFIX@">galaxy0</token>
     </macros>
+    <xrefs>
+        <xref type="bio.tools">EDTA</xref>
+    </xrefs>
     <requirements>
         <container type="docker">oushujun/edta:2.0.0</container>
     </requirements>
