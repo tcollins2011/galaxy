@@ -45,6 +45,9 @@ format:  ## Format Python code base
 	$(IN_VENV) isort .
 	$(IN_VENV) black .
 
+remove-unused-imports:  ## Remove unused imports in Python code base
+	$(IN_VENV) autoflake --in-place --remove-all-unused-imports --recursive --verbose lib/ test/
+
 list-dependency-updates: setup-venv
 	$(IN_VENV) pip list --outdated --format=columns
 
@@ -158,6 +161,9 @@ clean-cwl-conformance-tests:  ## Clean CWL conformance tests
 update-cwl-conformance-tests: ## update CWL conformance tests
 	$(MAKE) clean-cwl-conformance-tests
 	$(MAKE) generate-cwl-conformance-tests
+
+skip-client: ## Run only the server, skipping the client build.
+	GALAXY_SKIP_CLIENT_BUILD=1 sh run.sh
 
 node-deps: ## Install NodeJS dependencies.
 ifndef YARN

@@ -1,5 +1,7 @@
 import copy
+import os
 from typing import (
+    Any,
     Callable,
     cast,
     Dict,
@@ -47,7 +49,7 @@ class ToolRequirement:
         return copy.deepcopy(self)
 
     @staticmethod
-    def from_dict(d):
+    def from_dict(d: Dict[str, Any]) -> "ToolRequirement":
         version = d.get("version")
         name = d.get("name")
         type = d.get("type")
@@ -124,7 +126,7 @@ class ToolRequirements:
             self.tool_requirements = OrderedSet()
 
     @staticmethod
-    def from_list(requirements):
+    def from_list(requirements: Union[List[ToolRequirement], Dict[str, Any]]) -> "ToolRequirements":
         return ToolRequirements(requirements)
 
     @property
@@ -181,13 +183,19 @@ DEFAULT_CONTAINER_SHELL = "/bin/sh"  # Galaxy assumes bash, but containers are u
 class ContainerDescription:
     def __init__(
         self,
-        identifier=None,
-        type=DEFAULT_CONTAINER_TYPE,
-        resolve_dependencies=DEFAULT_CONTAINER_RESOLVE_DEPENDENCIES,
-        shell=DEFAULT_CONTAINER_SHELL,
-    ):
-        # Force to lowercase because container image names must be lowercase
-        self.identifier = identifier.lower() if identifier else None
+        identifier: Optional[str] = None,
+        type: str = DEFAULT_CONTAINER_TYPE,
+        resolve_dependencies: bool = DEFAULT_CONTAINER_RESOLVE_DEPENDENCIES,
+        shell: str = DEFAULT_CONTAINER_SHELL,
+    ) -> None:
+        # Force to lowercase because container image names must be lowercase.
+        # Cached singularity images include the path on disk, so only lowercase
+        # the image identifier portion.
+        self.identifier = None
+        if identifier:
+            parts = identifier.rsplit(os.sep, 1)
+            parts[-1] = parts[-1].lower()
+            self.identifier = os.sep.join(parts)
         self.type = type
         self.resolve_dependencies = resolve_dependencies
         self.shell = shell

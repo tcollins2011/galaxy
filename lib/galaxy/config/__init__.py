@@ -25,6 +25,7 @@ from typing import (
     Optional,
     Set,
     SupportsInt,
+    TYPE_CHECKING,
     TypeVar,
     Union,
 )
@@ -50,6 +51,9 @@ from ..version import (
     VERSION_MAJOR,
     VERSION_MINOR,
 )
+
+if TYPE_CHECKING:
+    from galaxy.model import User
 
 try:
     from importlib.resources import files  # type: ignore[attr-defined]
@@ -561,9 +565,9 @@ class CommonConfigurationMixin:
         self._admin_users = value
         self.admin_users_list = listify(value)
 
-    def is_admin_user(self, user):
+    def is_admin_user(self, user: Optional["User"]) -> bool:
         """Determine if the provided user is listed in `admin_users`."""
-        return user and (user.email in self.admin_users_list or user.bootstrap_admin_user)
+        return user is not None and (user.email in self.admin_users_list or user.bootstrap_admin_user)
 
     @property
     def sentry_dsn_public(self):
@@ -677,7 +681,6 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
     hours_between_check: int
     galaxy_data_manager_data_path: str
     use_remote_user: bool
-    cluster_files_directory: str
     preserve_python_environment: str
     email_from: str
     workflow_resource_params_mapper: str
@@ -843,7 +846,6 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
             if len(ip.strip()) > 0
         ]
         self.job_queue_cleanup_interval = int(kwargs.get("job_queue_cleanup_interval", "5"))
-        self.cluster_files_directory = self._in_root_dir(self.cluster_files_directory)
 
         # Fall back to legacy job_working_directory config variable if set.
         self.jobs_directory = self._in_data_dir(kwargs.get("jobs_directory", self.job_working_directory))

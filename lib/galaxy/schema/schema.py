@@ -82,7 +82,7 @@ AccessibleField: bool = Field(
     description="Whether this item is accessible to the current user due to permissions.",
 )
 
-EncodedEntityIdField: EncodedDatabaseIdField = Field(
+EntityIdField = Field(
     ...,
     title="ID",
     description="The encoded ID of this entity.",
@@ -182,6 +182,10 @@ class Model(BaseModel):
     class Config:
         use_enum_values = True  # when using .dict()
         allow_population_by_field_name = True
+        json_encoders = {
+            # This will ensure all IDs are encoded when serialized to JSON
+            DecodedDatabaseIdField: lambda v: DecodedDatabaseIdField.encode(v),
+        }
 
 
 class UserModel(Model):
@@ -261,9 +265,7 @@ class HistoryContentSource(str, Enum):
     new_collection = "new_collection"
 
 
-class DatasetCollectionInstanceType(str, Enum):
-    history = "history"
-    library = "library"
+DatasetCollectionInstanceType = Literal["history", "library"]
 
 
 class TagItem(ConstrainedStr):
@@ -347,7 +349,7 @@ class Visualization(Model):  # TODO annotate this model
 class HistoryItemBase(Model):
     """Basic information provided by items contained in a History."""
 
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     name: Optional[str] = Field(
         title="Name",
         description="The name of the item.",
@@ -592,7 +594,7 @@ class DCSummary(Model):
     """Dataset Collection summary information."""
 
     model_class: str = ModelClassField(DC_MODEL_CLASS_NAME)
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     create_time: datetime = CreateTimeField
     update_time: datetime = UpdateTimeField
     collection_type: CollectionType = CollectionTypeField
@@ -604,7 +606,7 @@ class DCSummary(Model):
 class HDAObject(Model):
     """History Dataset Association Object"""
 
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model_class: str = ModelClassField(HDA_MODEL_CLASS_NAME)
     state: Dataset.states = DatasetStateField
     hda_ldda: DatasetSourceType = HdaLddaField
@@ -617,7 +619,7 @@ class HDAObject(Model):
 class DCObject(Model):
     """Dataset Collection Object"""
 
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model_class: str = ModelClassField(DC_MODEL_CLASS_NAME)
     collection_type: CollectionType = CollectionTypeField
     populated: Optional[bool] = PopulatedField
@@ -629,7 +631,7 @@ class DCObject(Model):
 class DCESummary(Model):
     """Dataset Collection Element summary information."""
 
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model_class: str = ModelClassField(DCE_MODEL_CLASS_NAME)
     element_index: int = Field(
         ...,
@@ -798,7 +800,7 @@ class HistoryContentItem(Model):
         title="Content Type",
         description="The type of this item.",
     )
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: DecodedDatabaseIdField = EntityIdField
 
 
 class UpdateContentItem(HistoryContentItem):
@@ -897,7 +899,7 @@ class HistorySummary(HistoryBase):
     """History summary information."""
 
     model_class: str = ModelClassField(HISTORY_MODEL_CLASS_NAME)
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     name: str = Field(
         ...,
         title="Name",
@@ -1267,7 +1269,7 @@ class CreateNewCollectionPayload(Model):
         description="Whether to create a copy of the source HDAs for the new collection.",
     )
     instance_type: Optional[DatasetCollectionInstanceType] = Field(
-        default=DatasetCollectionInstanceType.history,
+        default="history",
         title="Instance Type",
         description="The type of the instance, either `history` (default) or `library`.",
     )
@@ -1421,7 +1423,7 @@ class JobIdResponse(BaseModel):
 
 
 class JobBaseModel(Model):
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model_class: str = ModelClassField(JOB_MODEL_CLASS_NAME)
     tool_id: str = Field(
         ...,
@@ -1462,7 +1464,7 @@ class JobImportHistoryResponse(JobBaseModel):
 
 
 class JobStateSummary(Model):
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model: str = ModelClassField("Job")
     populated_state: DatasetCollection.populated_states = PopulatedStateField
     states: Dict[Job.states, int] = Field(
@@ -1507,7 +1509,7 @@ class JobSummary(JobBaseModel):
 
 
 class DatasetSourceId(Model):
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     src: DatasetSourceType = Field(
         ...,
         title="Source",
@@ -1641,7 +1643,7 @@ class JobFullDetails(JobDetails):
 
 
 class StoredWorkflowSummary(Model):
-    id: EncodedDatabaseIdField = EncodedEntityIdField
+    id: EncodedDatabaseIdField = EntityIdField
     model_class: str = ModelClassField(STORED_WORKFLOW_MODEL_CLASS_NAME)
     create_time: datetime = CreateTimeField
     update_time: datetime = UpdateTimeField
@@ -2534,11 +2536,21 @@ class LibraryFolderCurrentPermissions(BaseModel):
     )
 
 
+class LibraryFolderContentsIndexSortByEnum(str, Enum):
+    name = "name"
+    description = "description"
+    type = "type"
+    size = "size"
+    update_time = "update_time"
+
+
 class LibraryFolderContentsIndexQueryPayload(Model):
     limit: int = 10
     offset: int = 0
     search_text: Optional[str] = None
     include_deleted: Optional[bool] = None
+    order_by: LibraryFolderContentsIndexSortByEnum = LibraryFolderContentsIndexSortByEnum.name
+    sort_desc: Optional[bool] = False
 
 
 class LibraryFolderItemBase(Model):
