@@ -47,25 +47,89 @@
     ## Benchmark
     ]]></command>
     <inputs>
-        <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
-        <param name='species' type="select" label="Which species should be used for identification of TIR candidates">
-            <option value="Others">Others</option>
-            <option value="Rice">Rice</option>
-            <option value="Maize">Maize</option>
-        </param>
-        <param name="cds" argumet="--cds" type="data" format="fasta" label="Coding Sequence File" help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
-        <param name="curatedlib" argument="--curatedlib" type="data" format="fasta" label="Curated Library File" optional='true' help="Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here."/>
-        <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
-        <conditional name='anno_select'>
-            <param name="anno" type="select" label="Would you like to perform whole-genome TE annotation after TE library construction?">
-                <option value="1">Yes</option>
-                <option value="0">No</option>
+        <conditional name="function_select">
+            <param name="function" type="select" label="Which Function should be run">
+                <option value="genome">Whole Genome</option>
+                <option value="te">Specific TE</option>
+                <option value="benchmark">Benchmark</option>
             </param>
-            <when value="1">
-                <param name="evaluate" argument="evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
-                <param name="exclude" argument="--exclude" type="data" format="bed" label="Exclude" help="Exclude bed format regions from TE annotation" optional="true"/>
+            <when value="genome">
+                <!-- Genome to TE annotations -->
+                <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
+                <param name='species' argument ="--species" type="select" label="Which species should be used for identification of TIR candidates">
+                    <option value="Others">Others</option>
+                    <option value="Rice">Rice</option>
+                    <option value="Maize">Maize</option>
+                </param>
+                <param name="step" argument="--step" type="select" label="Specify which steps you want to run EDTA" help="all: run the entire pipeline (default) \n filter: start from raw TEs to the end.">
+                    <option value="all">All</option>
+                    <option value="filter">Filter</option>
+                    <option value="final">Final</option>
+                    <option value="anno">Anno</option>
+                </param>
+                <param name="cds" argumet="--cds" type="data" format="fasta" label="Coding Sequence File" help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
+                <param name="curatedlib" argument="--curatedlib" type="data" format="fasta" label="Curated Library File" optional='true' help="Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here."/>
+                <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
+                <conditional name='anno_select'>
+                    <param name="anno" type="select" label="Would you like to perform whole-genome TE annotation after TE library construction?">
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </param>
+                    <when value="1">
+                        <param name="evaluate" argument="evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
+                        <param name="exclude" argument="--exclude" type="data" format="bed" label="Exclude" help="Exclude bed format regions from TE annotation" optional="true"/>
+                    </when>
+                </conditional>
+
+            </when>
+            <when value="te">
+                <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
+                <param name='species' argument ="--species" type="select" label="Which species should be used for identification of TIR candidates">
+                    <option value="Others">Others</option>
+                    <option value="Rice">Rice</option>
+                    <option value="Maize">Maize</option>
+                </param>
+                <param name="type" argument="--type" type="select" label="Which type of raw TE candidates do you want?">
+                    <option value="all">all</option>
+                    <option value="ltr">ltr</option>
+                    <option value="tir">tir</option>
+                    <option value="helitron">helitron</option>
+                </param>
+            </when>
+            <when value="benchmark">
+                <conditional name="benchmark_step">
+                    <param name="benchmark_select" type="select" label="Do you want to annotate a genome with your new method or test against EDTA?">
+                        <option value="annotate_genome">Annotate Genome</option>
+                        <option value="benchmark_genome">Benchmark Against EDTA</option>
+                    </param>
+                    <when value="annotate_genome">
+                        <param name="custom_library" type="data" format="fasta"></param>
+                        <param name="annotate_library" type="data" format="fasta"></param>
+                    </when>
+                    <when value="benchmark_genome">
+                        <param name="genome" argument="-genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
+                        <param name="std" argument="-std" type="data" format="fasta" label="Out file of standard Library" help="RepeatMasker .out file of the standard library"></param>
+                        <param name="tst" argument="-tst" type="data" format="fasta" label="Out file of test library" help="RepeatMasker .out file of the test library"></param>
+                        <param name="cat" argument="-cat" type="select" label="Which TE category would you like to test?">
+                            <option value="Total">Total</option>
+                            <option value="LTR">LTR</option>
+                            <option value="nonLTR">nonLTR</option>
+                            <option value="LINE">LINE</option>
+                            <option value="SINE">SINE</option>
+                            <option value="TIR">TIR</option>
+                            <option value="MITE">MITE</option>
+                            <option value="Helitron">Helitron</option>
+                        </param>
+                        <param name="n" argument="-n" type="select" label="Would you like to include N's in the total length of the genome? Default is to not inclue N's">
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </param>
+                    </when>
+                </conditional>
             </when>
         </conditional>
+        <!-- Find elements of a paticular TE type -->
+        <!-- Benchmark -->
     </inputs>
     <outputs>
         <data name="outfile_library" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library"/>
@@ -92,94 +156,9 @@
         </data>
     </outputs>
     <tests>
-    <!-- From Head to Toe Default Functions -->
-        <test expect_num_outputs="8">
-            <conditional>
-                <param name="genome" value="test_genome.fa" ftype="fasta"/>
-                <param name="cds" value="test_genome.cds.fa" ftype="bed"/>
-                <param name="curatedlib" value="test_rice6.9.5.liban" ftype="fasta"/>
-                <param name="species" value='otheres'/>
-                <param name="anno" value='true'/>
-                <param name="exclude" value="test_genome.exclude.bed" ftype="fasta"/>
-                <param name="sensitive" value="true"/>
-                <param name="evaluate" value="true"/>
-            </conditional>
-            <output name="outfile_library" file="test_1.pheno.json" lines_diff="1"/></output>
-            <output name="Novel_TE_Families" file="" lines_diff="0"></output>
-            <output name="Whole_Genome_TE_Annotation" file="" lines_diff="1"> </output>
-            <output name="Summary_Whole_Genome_TE_Annotation" >
-                <assert_contents>
-                    <has_text text=" Chr2:624582..626969      1            974          0.10% "/>
-                    <has_text text="           Os0029      1            244          0.02% "/>
-                    <has_text text=" RST-Osativa-Cluster_7      1            175          0.02% "/>
-                </assert_contents>
-            </output>
-            <output name="Low_Threshold_TE_Masking" file="" lines_diff="0"></output>
-            <output name="Annotation_Inconsistency_Simple_TEs">
-                <assert_contents>
-                    <has_text text="LTR/Copia	2	0	0	0	0	0	0	0	0	0	0.0000"/>
-                    <has_text text="TIR/PIF_Harbinger	0	0	0	27	2	0	0	0	0	0	0.0690"/>
-                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	8	0.0000"/>
-                </assert_contents>
-            </output>
-            <output name="Annotation_Inconsistency_Nested_TEs">
-                <assert_contents>
-                    <has_text text="rs9923231 reference"/>
-                    <has_text text="nonTIR/helitron	0	0	0	0	4	0.0000"/>
-                    <has_text text="LTR/Gypsy	2	0	0	0	0	0.0000"/>
-                </assert_contents>
-            </output>
-            <output name="Overall_Annotation_Inconsistency" >
-                <assert_contents>
-                    <has_text text="TIR/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
-                    <has_text text="TIR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
-                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
-                </assert_contents>
-            </output>
-        </test>
+        <!-- From Head to Toe Default Functions -->
         <!-- Divide and Conquer -->
-        <test expect_num_outputs="1">
-            <conditional>
-                <param name="genome" value="test_genome.fa" ftype="fasta"/>
-                <param name="species" value='others'/>
-                <param name="type" value='ltr'/>
-            </conditional>
-            <output>
-                <assert_contents>
-                    <has_text text="LTR/Copia 0	0	8	1	0	0	0	0	0	0	0.1111"/>
-                    <has_text text="LTR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
-                    <has_text text="LTR/Corcis	0	0	0	0	0	0	0	0	0	12	0.0000"/>
-                </assert_contents>
-            </output>
-        </test>
-        <test expect_num_outputs="1">
-            <conditional>
-                <param name="genome" value="test_genome.fa" ftype="fasta"/>
-                <param name="species" value='others'/>
-                <param name="type" value='hellitron'/>
-            </conditional>
-            <output>
-                <assert_contents>
-                    <has_text text="TIR/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
-                    <has_text text="TIR/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
-                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
-                </assert_contents>
-            </output>
-        </test>
-        <test expect_num_outputs="1">
-            <conditional>
-                <param name="genome" value="test_genome.fa" ftype="fasta"/>
-                <param name="species" value='others'/>
-                <param name="type" value='tir'/>
-            </conditional>
-            <output>
-                <assert_contents>
-                    <has_text text="helitron/Mutator	0	0	8	1	0	0	0	0	0	0	0.1111"/>
-                    <has_text text="helitron/Tc1_Mariner	0	0	0	0	38	0	0	0	0	0	0.0000"/>
-                    <has_text text="nonTIR/helitron	0	0	0	0	0	0	0	0	0	12	0.0000"/>
-                </assert_contents>
-            </output>
-        </test>
+
         <!-- Benchmark -->
     </tests>
     <citations>
