@@ -15,10 +15,10 @@
     <command detect_errors="exit_code"><![CDATA[
     ## General Run Command
     #if $function_select.function == 'genome':
-        ln -s '$function_select.genome' ./input.fasta &&
+        ln -s '$function_select.genome' ./input.fa &&
         perl /EDTA/EDTA.pl 
-        --genome input.fasta
-        --cds '$function_select.cds'
+        --genome input.fa
+        ## --cds '$function_select.cds'
     #end if    
     ## ln -s '$genome' ./input.fa &&
     ## perl -cp /edta/EDTA.pl
@@ -72,7 +72,7 @@
                     <option value="final">Final</option>
                     <option value="anno">Anno</option>
                 </param>
-                <param name="cds" argumet="--cds" type="data" format="fasta" label="Coding Sequence File" help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
+                <param name="cds" argumet="--cds" type="data" format="fasta" label="Coding Sequence File" optional='true' help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
                 <param name="curatedlib" argument="--curatedlib" type="data" format="fasta" label="Curated Library File" optional='true' help="Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here."/>
                 <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
                 <conditional name='anno_select'>
@@ -140,28 +140,28 @@
     </inputs>
     <outputs>
         <!--  Genome to TE Annotations-->
-        <data name="outfile_library" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
+        <data name="outfile_library" from_work_dir="*.mod.EDTA.TElib.fa" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
             <filter>function_select['function'] == "genome"</filter>
         </data>
-        <data name="Novel_TE_Families"  format="fasta" label="${tool.name} on ${on_string}: Novel TE Families">
-            <filter>function_select['function'] == "genome"</filter>
+        <data name="Novel_TE_Families"  from_work_dir="*.mod.EDTA.TElib.novel.fa" format="fasta" label="${tool.name} on ${on_string}: Novel TE Families">
+            <filter>function_select['function'] == "genome" and function_select['curatedlib']</filter>
         </data>
-        <data name="Whole_Genome_TE_Annotation"  format="gff3" label="${tool.name} on ${on_string}: Whole Genome TE Annotation">
+        <data name="Whole_Genome_TE_Annotation" from_work_dir="*.mod.EDTA.TEanno.gff3" format="gff3" label="${tool.name} on ${on_string}: Whole Genome TE Annotation">
             <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" </filter>
         </data>
-        <data name="Summary_Whole_Genome_TE_Annotation"  format="sum" label="${tool.name} on ${on_string}: Summary of Whole Genome TE Annotation">
+        <data name="Summary_Whole_Genome_TE_Annotation" from_work_dir="*.mod.EDTA.TEanno.sum" format="sum" label="${tool.name} on ${on_string}: Summary of Whole Genome TE Annotation">
             <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
         </data>
-        <data name="Low_Threshold_TE_Masking"  format="gff3" label="${tool.name} on ${on_string}: Low_Threshold_TE_Masking">
+        <data name="Low_Threshold_TE_Masking" from_work_dir="*.mod.MAKER.masked" format="gff3" label="${tool.name} on ${on_string}: Low_Threshold_TE_Masking">
             <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
         </data>
-        <data name="Annotation_Inconsistency_Simple_TEs"  format="sum" label="${tool.name} on ${on_string}: Simple TE Annotation Inconsistency">
+        <data name="Annotation_Inconsistency_Simple_TEs" from_work_dir="*.mod.EDTA.TE.fa.stat.redun.sum" format="sum" label="${tool.name} on ${on_string}: Simple TE Annotation Inconsistency">
             <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
         </data>
-        <data name="Annotation_Inconsistency_Nested_TEs"  format="sum" label="${tool.name} on ${on_string}: Nested TE Annotation Inconsistency">
+        <data name="Annotation_Inconsistency_Nested_TEs" from_work_dir="*.mod.EDTA.TE.fa.stat.nested.sum" format="sum" label="${tool.name} on ${on_string}: Nested TE Annotation Inconsistency">
             <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
         </data>
-        <data name="Overall_Annotation_Inconsistency"  format="sum" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
+        <data name="Overall_Annotation_Inconsistency" from_work_dir="*.mod.EDTA.TE.fa.stat.all.sum" format="sum" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
             <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True</filter>
         </data>
         <!-- Find elements of a paticular TE type -->
