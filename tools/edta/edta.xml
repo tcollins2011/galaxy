@@ -14,31 +14,36 @@
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
     ## General Run Command
-    ## Changing a single line here to add to the github repo
-    ln -s '$genome' ./input.fa &&
-    perl -cp /edta/EDTA.pl
-    --genome input.fa
-    --species $species
-    #if $cds:
-        --cds $cds
-    #end if
-    #if $curatedlib:
-        --curatedlib $curatedlib
-    #end if
-    #if $sensitive:
-        --cds $sensitive
-    #end if
-    #if $anno_select.anno == '1':
-        --anno 1
-        #if $anno_select.exclude:
-            --exclude $anno_select.exclude
-        #end if
-        #if $anno_select.evaluate:
-            --evaluate 1
-        #end if
-    #endif
+    #if $function_select.function == 'genome':
+        ln -s '$function_select.genome' ./input.fasta &&
+        perl /EDTA/EDTA.pl 
+        --genome input.fasta
+        --cds '$function_select.cds'
+    #end if    
+    ## ln -s '$genome' ./input.fa &&
+    ## perl -cp /edta/EDTA.pl
+    ## --genome input.fa
+    ## --species $species
+    ## #if $cds:
+    ##     --cds $cds
+    ## #end if
+    ## #if $curatedlib:
+    ##     --curatedlib $curatedlib
+    ## #end if
+    ## #if $sensitive:
+    ##     --cds $sensitive
+    ## #end if
+    ## #if $anno_select.anno == '1':
+    ##     --anno 1
+    ##     #if $anno_select.exclude:
+    ##         --exclude $anno_select.exclude
+    ##     #end if
+    ##     #if $anno_select.evaluate:
+    ##         --evaluate 1
+    ##     #end if
+    ## #endif
 
-    --evaluate
+    ## --evaluate
     ## ln -s $genome
     ##perl ../EDTA.pl --genome genome.fa --cds genome.cds.fa --curatedlib ../database/rice6.9.5.liban --exclude genome.exclude.bed --overwrite 1 --sensitive 1 --anno 1 --evaluate 1 --threads 10
 
@@ -160,6 +165,7 @@
             <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True</filter>
         </data>
         <!-- Find elements of a paticular TE type -->
+
         <!-- Benchmark -->
 
     </outputs>
