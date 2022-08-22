@@ -72,16 +72,17 @@
                 <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
                 <conditional name='anno_select'>
                     <param name="anno" type="select" label="Would you like to perform whole-genome TE annotation after TE library construction?">
-                        <option value="1">Yes</option>
-                        <option value="0">No</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
                     </param>
-                    <when value="1">
-                        <param name="evaluate" argument="evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
+                    <when value="yes">
+                        <param name="evaluate" argument="--evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
                         <param name="exclude" argument="--exclude" type="data" format="bed" label="Exclude" help="Exclude bed format regions from TE annotation" optional="true"/>
                     </when>
                 </conditional>
 
             </when>
+            <!-- Find elements of a paticular TE type -->
             <when value="te">
                 <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
                 <param name='species' argument ="--species" type="select" label="Which species should be used for identification of TIR candidates">
@@ -96,6 +97,7 @@
                     <option value="helitron">helitron</option>
                 </param>
             </when>
+            <!-- Benchmark -->
             <when value="benchmark">
                 <conditional name="benchmark_step">
                     <param name="benchmark_select" type="select" label="Do you want to annotate a genome with your new method or test against EDTA?">
@@ -128,37 +130,42 @@
                 </conditional>
             </when>
         </conditional>
-        <!-- Find elements of a paticular TE type -->
-        <!-- Benchmark -->
+
+
     </inputs>
     <outputs>
-        <data name="outfile_library" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library"/>
+        <!--  Genome to TE Annotations-->
+        <data name="outfile_library" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
+            <filter>function_select['function'] == "genome"</filter>
+        </data>
         <data name="Novel_TE_Families"  format="fasta" label="${tool.name} on ${on_string}: Novel TE Families">
-            <filter>curatedlib</filter>
+            <filter>function_select['function'] == "genome"</filter>
         </data>
         <data name="Whole_Genome_TE_Annotation"  format="gff3" label="${tool.name} on ${on_string}: Whole Genome TE Annotation">
-            <filter>anno_select['anno'] == "1"</filter>
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" </filter>
         </data>
         <data name="Summary_Whole_Genome_TE_Annotation"  format="sum" label="${tool.name} on ${on_string}: Summary of Whole Genome TE Annotation">
-            <filter>anno_select['anno'] == "1"</filter>
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
         </data>
         <data name="Low_Threshold_TE_Masking"  format="gff3" label="${tool.name} on ${on_string}: Low_Threshold_TE_Masking">
-            <filter>anno_select['anno'] == "1"</filter>
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
         </data>
         <data name="Annotation_Inconsistency_Simple_TEs"  format="sum" label="${tool.name} on ${on_string}: Simple TE Annotation Inconsistency">
-            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
         </data>
         <data name="Annotation_Inconsistency_Nested_TEs"  format="sum" label="${tool.name} on ${on_string}: Nested TE Annotation Inconsistency">
-            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
         </data>
         <data name="Overall_Annotation_Inconsistency"  format="sum" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
-            <filter>anno_select['anno'] == "1" and anno_select['evaluate'] </filter>
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True</filter>
         </data>
+        <!-- Find elements of a paticular TE type -->
+        <!-- Benchmark -->
+
     </outputs>
     <tests>
-        <!-- From Head to Toe Default Functions -->
-        <!-- Divide and Conquer -->
-
+         <!--  Genome to TE Annotations-->
+        <!-- Find elements of a paticular TE type -->
         <!-- Benchmark -->
     </tests>
     <citations>
