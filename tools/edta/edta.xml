@@ -42,7 +42,7 @@
             #end if
         #end if 
     ## Find elements of a paticular TE type
-    #else if 
+    ## #else if 
 
     ## Benchmark
     #end if    
