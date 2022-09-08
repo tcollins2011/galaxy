@@ -47,29 +47,39 @@
         perl /EDTA/EDTA_raw.pl
         --genome input.fa
         --species '$function_select.species'
-        --type '$function_select.type'
+        --type '$function_select.te_type'
+        && mv ./input.fa.mod.EDTA.raw/input.fa.mod* .
     ## Benchmark
     #else if $function_select.function =='benchmark':
-        #if $function_select.benchmark_select == 'annotate_genome':
+        #if $function_select.benchmark_step == 'annotate_genome':
             ln -s '$function_select.genome' ./input.fa &&
-            perl /EDTA/EDTA_raw.pl
-            --genome input.fa
-            --species '$function_select.species'
-            --type '$function_select.type'
-        #end if
-        #if $function_select.benchmark_select == 'benchmark_genome':
-            ln -s '$function_select.genome' ./input.fa &&
-            perl /EDTA/lib-test.pl 
-            -genome input.fa
-            -std '$function_select.std'
-            -tst '$function_select.tst'
-            -cat '$function_select.cat'
-            -N '$function_select.N'
+            /EDTA/RepeatMasker
+            -e ncbi
+            -pa 36
+            -q no_is 
+            -norna
+            -nolow
+            -div 40
+            -lib input.fa
+            -cutoff 225
+            '$function_select.benchmark_select.annotate_library'
+        
+        #else if $function_select.benchmark_step == 'benchmark_genome':
+            echo 'hi'
+            ## ln -s '$function_select.genome' ./input.fa &&
+            ## ls &&
+            ## echo 'hi'
+            ## perl /EDTA/lib-test.pl 
+            ## -genome input.fa
+            ## -std ./database/Rice_MSU7.fasta.std6.9.5.out
+            ## -tst '$function_select.tst'
+            ## -cat '$function_select.cat'
+            ## -N '$function_select.N'
         #end if
 
     ## pan-EDTA
      #else if $function_select.function =='pan-edta':
-     #for $i, $s in enumerate($te_library)
+     #for $i, $s in enumerate($function_select.te_library)
         
         perl /EDTA/EDTA.pl 
         --genome '${s.function_select.genome}'
@@ -98,6 +108,7 @@
         #end if
         && 
     #end for
+    ls
     ## $genome.out is the RepeatMasker .out file generated from the last step, located in $genome.mod.EDTA.anno/
     ## for i in `cat list.cds|awk '{print $1}'`; do
     ##     perl ~/las/git_bin/EDTA/util/output_by_list.pl \
@@ -141,7 +152,7 @@
                     <option value="Rice">Rice</option>
                     <option value="Maize">Maize</option>
                 </param>
-                <param name="type" argument="--type" type="select" label="Which type of raw TE candidates do you want?">
+                <param name="te_type" argument="--type" type="select" label="Which type of raw TE candidates do you want?">
                     <option value="all">all</option>
                     <option value="ltr">ltr</option>
                     <option value="tir">tir</option>
@@ -156,12 +167,11 @@
                         <option value="benchmark_genome">Benchmark Against EDTA</option>
                     </param>
                     <when value="annotate_genome">
-                        <param name="custom_library" type="data" format="fasta"></param>
-                        <param name="annotate_library" type="data" format="fasta"></param>
+                        <param name="custom_library" type="data" format="fasta" label='custom library' argument='-lib' help='Upload a TE library'></param>
+                        <param name="annotate_library" type="data" format="fasta" label='Rice Genome' help='Upload the Rice Genome'></param>
                     </when>
                     <when value="benchmark_genome">
-                        <param name="genome" argument="-genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
-                        <param name="std" argument="-std" type="data" format="fasta" label="Out file of standard Library" help="RepeatMasker .out file of the standard library"></param>
+                        <param name="genome" argument="-genome" type="data" format="fasta" label="Rice Genome File" help="The Rice Genome FASTA file"/>
                         <param name="tst" argument="-tst" type="data" format="fasta" label="Out file of test library" help="RepeatMasker .out file of the test library"></param>
                         <param name="cat" argument="-cat" type="select" label="Which TE category would you like to test?">
                             <option value="Total">Total</option>
@@ -210,25 +220,69 @@
         <data name="Overall_Annotation_Inconsistency" from_work_dir="*.mod.EDTA.TE.fa.stat.all.sum" format="xml" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
             <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True</filter>
         </data>
-        <!-- Find elements of a paticular TE type -->
-        <data name='discover_gff3'>
-            <discover_datasets pattern="__designation_and_ext__" directory="input.fa.mod.EDTA.raw" visible="true" format="gff3"></discover_datasets>
-            <filter>function_select['function'] == "te"</filter>
+        <!-- Find elements of a paticular TE type -->->
+        <data name='ltr_intact_fa' from_work_dir="*.LTR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr'  </filter>
         </data>
-        <data name='discover_fasta'>
-            <discover_datasets pattern="__designation_and_ext__" directory="input.fa.mod.EDTA.raw" visible="true" format="fa"></discover_datasets>
-            <filter>function_select['function'] == "te"</filter>
+        <data name='ltr_intact_gff3' from_work_dir="*.LTR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_LTR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr'  </filter>
         </data>
-        <data name='discover_bed'>
-            <discover_datasets pattern="__designation_and_ext__" directory="input.fa.mod.EDTA.raw" visible="true" format="bed"></discover_datasets>
-            <filter>function_select['function'] == "te"</filter>
+        <data name='ltr_raw_fa' from_work_dir="*.LTR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr' </filter>
+        </data>
+        <data name='tir_intact_fa' from_work_dir="*.TIR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir'  </filter>
+        </data>
+        <data name='tir_intact_gff3' from_work_dir="*.TIR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_TIR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir'  </filter>
+        </data>
+        <data name='tir_raw_fa' from_work_dir="*.TIR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir' </filter>
+        </data>
+        <data name='helitron_intact_fa' from_work_dir="*.Helitron.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron'  </filter>
+        </data>
+        <data name='helitron_intact_gff3' from_work_dir="*.Helitron.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_Helitron.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron'  </filter>
+        </data>
+        <data name='helitron_raw_fa' from_work_dir="*.Helitron.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron' </filter>
         </data>
 
+        <data name='all_ltr_intact_fa' from_work_dir="*.LTR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_ltr_intact_gff3' from_work_dir="*.LTR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_LTR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_ltr_raw_fa' from_work_dir="*.LTR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
+        <data name='all_tir_intact_fa' from_work_dir="*.TIR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_tir_intact_gff3' from_work_dir="*.TIR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_TIR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_tir_raw_fa' from_work_dir="*.TIR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
+        <data name='all_helitron_intact_fa' from_work_dir="*.Helitron.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_helitron_intact_gff3' from_work_dir="*.Helitron.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_Helitron.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_helitron_raw_fa' from_work_dir="*.Helitron.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
         <!-- Benchmark -->
-
+        <data name='test' format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa"> 
+            <filter>function_select['function'] == 'benchmark'</filter>
+        </data>
         <!-- pan-edta -->
-        <data name="outfile_library" from_work_dir="*.mod.EDTA.TElib.fa" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
-            <filter>function_select['function'] == "genome"</filter>
+        <data name='test' format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa"> 
+            <filter>function_select['function'] == 'pan-edta'</filter>
         </data>
 
     </outputs>
