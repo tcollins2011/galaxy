@@ -78,50 +78,42 @@
         #end if
 
     ## pan-EDTA
-     #else if $function_select.function =='pan-edta':
-     #for $i, $s in enumerate($function_select.te_library)
-        
-        perl /EDTA/EDTA.pl 
-        --genome '${s.function_select.genome}'
-        --species '${s.function_select.species}'
-        --step '${s.function_select.step}'
-        #if $function_select.cds:
-            --cds '${s.function_select.cds}'
-        #end if 
-        #if $function_select.curatedlib:
-            --curatedlib '${s.function_select.curatedlib}'
-        #end if
-        #if $function_select.sensitive:
-            --sensitive 1
-        #end if
-        #if $function_select.mutation_rate:
-            --u "${s.function_select.mutation_rate}"
-        #end if 
-        #if $function_select.anno_select.anno == 'yes':
+    #else if $function_select.function =='pan-edta':
+        #set $cds_list = []
+        #for $i, $s in enumerate($function_select.te_library)
+            ln -s '${s.genome}' ./${i}_input.fa &&
+            perl /EDTA/EDTA.pl 
+            --genome ${i}_input.fa 
+            --species '${s.species}'
             --anno 1
-            #if $function_select.anno_select.evaluate:
+            #if $s.cds:
+                --cds '${s.cds}'
+            #end if 
+            #if $s.curatedlib:
+                --curatedlib '${s.curatedlib}'
+            #end if
+            #if $s.sensitive:
+                --sensitive 1
+            #end if
+            #if $s.mutation_rate:
+                --u "${s.mutation_rate}"
+            #end if
+            #if $s.evaluate:
                 --evaluate 1 
             #end if
-            #if $function_select.anno_select.exclude:
-                --exclude '${s.function_select.anno_select.exclude}'
+            #if $s.exclude:
+                --exclude '${s.exclude}'
             #end if
-        #end if
-        && 
-    #end for
-    ls
-    ## $genome.out is the RepeatMasker .out file generated from the last step, located in $genome.mod.EDTA.anno/
-    ## for i in `cat list.cds|awk '{print $1}'`; do
-    ##     perl ~/las/git_bin/EDTA/util/output_by_list.pl \
-    ##     1 \
-    ##     <(perl -nle 's/#.*//; print $_' $i.mod.EDTA.TElib.novel.fa) \
-    ##     1 \
-    ##     <(perl ~/las/git_bin/EDTA/util/find_flTE.pl $i.mod.out | \
-    ##     awk '{print $10}'| \
-    ##     sort| \
-    ##     uniq -c |\
-    ##     perl -nle 'my ($count, $id) = (split); if ($id=~/LTR/){next if $count<=2} else {next if $count ==1} print $_' |\
-    ##     awk '{print $2}') -FA > $i.mod.EDTA.TElib.novel.fa.real &
-    ## done
+            #silent$cds_list.append(str($i) + '_input.fa')
+            &&  mv ./${i}_input.fa.mod.EDTA.anno/*.mod.out .
+            &&      
+        #end for
+       
+        #for $i in $cds_list
+            bash $__tool_directory__/test.sh $i &&
+        #end for 
+        ls
+
 
     #end if    
     ]]></command>
@@ -168,7 +160,7 @@
                     </param>
                     <when value="annotate_genome">
                         <param name="custom_library" type="data" format="fasta" label='custom library' argument='-lib' help='Upload a TE library'></param>
-                        <param name="annotate_library" type="data" format="fasta" label='Rice Genome' help='Upload the Rice Genome'></param>
+                        <expand macro="reference_source_conditional"></expand>
                     </when>
                     <when value="benchmark_genome">
                         <param name="genome" argument="-genome" type="data" format="fasta" label="Rice Genome File" help="The Rice Genome FASTA file"/>
@@ -294,7 +286,7 @@
                 <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
                 <param name='speices' value='Others' />
                 <param name='step' value='all' />
-                <param name ='curatedlib' value='test_rice6.9.5.liban' ftype='fasta'/>
+                <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
                 <param name ='sensitive' value='1' />
                 <conditional name ='anno_select'>
                     <param name='anno' value='yes'/>
@@ -326,7 +318,7 @@
                 <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
                 <param name='speices' value='Others' />
                 <param name='step' value='all' />
-                <param name ='curatedlib' value='test_rice6.9.5.liban' ftype='fasta'/>
+                <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
                 <param name ='sensitive' value='1' />
                 <conditional name ='anno_select'>
                     <param name='anno' value='yes'/>

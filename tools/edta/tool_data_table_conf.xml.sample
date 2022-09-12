@@ -1,0 +1,7 @@
+<tables>
+    <!-- Locations of Rice reference genome -->
+    <table name="hisat2_indexes" comment_char="#" allow_duplicate_entries="False">
+        <columns>value, dbkey, name, path</columns>
+        <file path="tool-data/edta.loc" />
+    </table>
+</tables>
