@@ -59,6 +59,11 @@ from galaxy.schema.schema import (
     WriteStoreToPayload,
 )
 from galaxy.web.framework.decorators import validation_error_to_message_exception
+from galaxy.webapps.galaxy.api import (
+    depends,
+    DependsOnTrans,
+    Router,
+)
 from galaxy.webapps.galaxy.api.common import (
     get_filter_query_params,
     get_update_permission_payload,
@@ -75,11 +80,6 @@ from galaxy.webapps.galaxy.services.history_contents import (
     HistoryContentsIndexJobsSummaryParams,
     HistoryContentsIndexParams,
     LegacyHistoryContentsIndexParams,
-)
-from . import (
-    depends,
-    DependsOnTrans,
-    Router,
 )
 
 log = logging.getLogger(__name__)
@@ -413,13 +413,11 @@ class FastAPIHistoryContents:
         "/api/histories/{history_id}/contents/{type}s/{id}",
         name="history_content_typed",
         summary="Return detailed information about a specific HDA or HDCA with the given `ID` within a history.",
-        response_model_exclude_unset=True,
     )
     @router.get(
         "/api/histories/{history_id}/contents/{id}",
         name="history_content",
         summary="Return detailed information about an HDA within a history.",
-        response_model_exclude_unset=True,
         deprecated=True,
     )
     def show(
@@ -575,12 +573,10 @@ class FastAPIHistoryContents:
     @router.post(
         "/api/histories/{history_id}/contents/{type}s",
         summary="Create a new `HDA` or `HDCA` in the given History.",
-        response_model_exclude_unset=True,
     )
     @router.post(
         "/api/histories/{history_id}/contents",
         summary="Create a new `HDA` or `HDCA` in the given History.",
-        response_model_exclude_unset=True,
         deprecated=True,
     )
     def create(
@@ -636,7 +632,7 @@ class FastAPIHistoryContents:
         will be made to the items.
         """
         result = self.service.update_batch(trans, history_id, payload, serialization_params)
-        return HistoryContentsResult.parse_obj(result)
+        return HistoryContentsResult.construct(__root__=result)
 
     @router.put(
         "/api/histories/{history_id}/contents/bulk",
@@ -671,12 +667,10 @@ class FastAPIHistoryContents:
     @router.put(
         "/api/histories/{history_id}/contents/{type}s/{id}",
         summary="Updates the values for the history content item with the given ``ID``.",
-        response_model_exclude_unset=True,
     )
     @router.put(
         "/api/histories/{history_id}/contents/{id}",
         summary="Updates the values for the history content item with the given ``ID``.",
-        response_model_exclude_unset=True,
         deprecated=True,
     )
     def update(
@@ -836,7 +830,7 @@ class FastAPIHistoryContents:
         serialization_params: SerializationParams = Depends(query_serialization_params),
     ) -> HistoryContentsResult:
         """
-        **Warning**: For internal use to support the scroller functionality.
+        .. warning:: For internal use to support the scroller functionality.
 
         This endpoint provides random access to a large history without having
         to know exactly how many pages are in the final query. Pick a target HID
@@ -847,23 +841,30 @@ class FastAPIHistoryContents:
         The `direction` determines what items are selected:
 
         a) item counts:
-        - total matches-up:   hid < {hid}
-        - total matches-down: hid > {hid}
-        - total matches:      total matches-up + total matches-down + 1 (+1 for hid == {hid})
-        - displayed matches-up:   hid <= {hid} (hid == {hid} is included)
-        - displayed matches-down: hid > {hid}
-        - displayed matches:      displayed matches-up + displayed matches-down
+
+           - total matches-up:   hid < {hid}
+           - total matches-down: hid > {hid}
+           - total matches:      total matches-up + total matches-down + 1 (+1 for hid == {hid})
+           - displayed matches-up:   hid <= {hid} (hid == {hid} is included)
+           - displayed matches-down: hid > {hid}
+           - displayed matches:      displayed matches-up + displayed matches-down
 
         b) {limit} history items:
-        - if direction == before: hid <= {hid}
-        - if direction == after:  hid > {hid}
-        - if direction == near:   "near" {hid}, so that |before| <= limit // 2, |after| <= limit // 2 + 1.
 
-        **Note**: This endpoint uses slightly different filter params syntax. Instead of using `q`/`qv` parameters
-                  it uses the following syntax for query parameters:
-                    ?[field]-[operator]=[value]
-                  Example:
-                    ?update_time-gt=2015-01-29
+           - if direction == "before": hid <= {hid}
+           - if direction == "after":  hid > {hid}
+           - if direction == "near":   "near" {hid}, so that
+             n. items before <= limit // 2,
+             n. items after <= limit // 2 + 1.
+
+        .. note:: This endpoint uses slightly different filter params syntax. Instead of using `q`/`qv` parameters,
+            it uses the following syntax for query parameters::
+
+                ?[field]-[operator]=[value]
+
+            Example::
+
+                ?update_time-gt=2015-01-29
         """
 
         # Needed to parse arbitrary query parameter names for the filters.
@@ -899,12 +900,12 @@ class FastAPIHistoryContents:
         history_id: DecodedDatabaseIdField = HistoryIDPathParam,
         id: DecodedDatabaseIdField = HistoryItemIDPathParam,
     ) -> AsyncTaskResultSummary:
-        materializae_request = MaterializeDatasetInstanceRequest(
+        materialize_request = MaterializeDatasetInstanceRequest.construct(
             history_id=history_id,
             source=DatasetSourceType.hda,
             content=id,
         )
-        rval = self.service.materialize(trans, materializae_request)
+        rval = self.service.materialize(trans, materialize_request)
         return rval
 
     @router.post(
@@ -917,8 +918,8 @@ class FastAPIHistoryContents:
         history_id: DecodedDatabaseIdField = HistoryIDPathParam,
         materialize_api_payload: MaterializeDatasetInstanceAPIRequest = Body(...),
     ) -> AsyncTaskResultSummary:
-        materializae_request: MaterializeDatasetInstanceRequest = MaterializeDatasetInstanceRequest(
+        materialize_request: MaterializeDatasetInstanceRequest = MaterializeDatasetInstanceRequest.construct(
             history_id=history_id, **materialize_api_payload.dict()
         )
-        rval = self.service.materialize(trans, materializae_request)
+        rval = self.service.materialize(trans, materialize_request)
         return rval

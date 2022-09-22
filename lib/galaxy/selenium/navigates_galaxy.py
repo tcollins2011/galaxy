@@ -39,7 +39,7 @@ from .has_driver import (
     exception_indicates_not_clickable,
     exception_indicates_stale_element,
     HasDriver,
-    TimeoutException,
+    SeleniumTimeoutException,
 )
 from .smart_components import SmartComponent
 
@@ -424,7 +424,7 @@ class NavigatesGalaxy(HasDriver):
     def history_panel_item_component(self, history_item=None, hid=None, multi_history_panel=False):
         if self.is_beta_history():
             assert hid
-            return self.content_item_by_attributes(hid=hid)
+            return self.content_item_by_attributes(hid=hid, multi_history_panel=multi_history_panel)
         if history_item is None:
             assert hid
             history_item = self.hid_to_history_item(hid)
@@ -445,7 +445,7 @@ class NavigatesGalaxy(HasDriver):
         timeout = self.timeout_for(wait_type=WAIT_TYPES.JOB_COMPLETION)
         try:
             self.wait(timeout).until(history_has_hid)
-        except self.TimeoutException as e:
+        except SeleniumTimeoutException as e:
             hids = get_hids()
             message = f"Timeout waiting for history {history_id} to have hid {hid} - have hids {hids}"
             raise self.prepend_timeout_message(e, message)
@@ -462,7 +462,7 @@ class NavigatesGalaxy(HasDriver):
         )
         try:
             self.history_item_wait_for(history_item_selector, allowed_force_refreshes)
-        except self.TimeoutException as e:
+        except SeleniumTimeoutException as e:
             selector = self.navigation.history_panel.selectors.contents
             if self.is_beta_history():
                 selector = self.navigation.history_panel.selectors.contents_beta
@@ -486,7 +486,7 @@ class NavigatesGalaxy(HasDriver):
             try:
                 rval = self.wait_for_visible(history_item_selector, wait_type=WAIT_TYPES.JOB_COMPLETION)
                 break
-            except self.TimeoutException:
+            except SeleniumTimeoutException:
                 if attempt >= allowed_force_refreshes:
                     raise
 
@@ -511,13 +511,15 @@ class NavigatesGalaxy(HasDriver):
             hid, allowed_force_refreshes=allowed_force_refreshes, multi_history_panel=multi_history_panel
         )
         if self.is_beta_history():
-            history_item_selector_state = self.content_item_by_attributes(hid=hid, state=state)
+            history_item_selector_state = self.content_item_by_attributes(
+                hid=hid, state=state, multi_history_panel=multi_history_panel
+            )
         else:
             # history_item_selector_state = history_item_selector.with_class(f"state-{state}")
             history_item_selector_state = history_item_selector.with_data("state", state)
         try:
             self.history_item_wait_for(history_item_selector_state, allowed_force_refreshes)
-        except self.TimeoutException as e:
+        except SeleniumTimeoutException as e:
             history_item = self.wait_for_visible(history_item_selector)
             current_state = "UNKNOWN"
             classes = history_item.get_attribute("class").split(" ")
@@ -662,7 +664,7 @@ class NavigatesGalaxy(HasDriver):
             user_menu = self.components.masthead.user_menu.wait_for_visible()
             try:
                 username_element = self.components.masthead.username.wait_for_visible()
-            except self.TimeoutException as e:
+            except SeleniumTimeoutException as e:
                 menu_items = user_menu.find_elements(By.CSS_SELECTOR, "li a")
                 menu_text = [mi.text for mi in menu_items]
                 message = f"Failed to find logged in message in menu items {', '.join(menu_text)}"
@@ -678,7 +680,7 @@ class NavigatesGalaxy(HasDriver):
     def wait_for_logged_in(self):
         try:
             self.components.masthead.logged_in_only.wait_for_visible()
-        except self.TimeoutException as e:
+        except SeleniumTimeoutException as e:
             ui_logged_out = self.components.masthead.logged_out_only.is_displayed
             if ui_logged_out:
                 dom_message = (
@@ -848,7 +850,7 @@ class NavigatesGalaxy(HasDriver):
         self.wait_for_and_click_selector(build_selector)
         try:
             self.wait_for_selector_absent_or_hidden(build_selector)
-        except TimeoutException:
+        except SeleniumTimeoutException:
             # Sometimes the callback in the JS hasn't be registered by the
             # time that the build button is clicked. By the time the timeout
             # has been registered - it should have been.
@@ -1537,10 +1539,13 @@ class NavigatesGalaxy(HasDriver):
         return self.components._.by_attribute(name=attribute_name, value=attribute_value, scope=scope)
 
     # join list of attrs into css attribute selectors and append to base beta_item selector
-    def content_item_by_attributes(self, **attrs):
-        suffix_list = [f'[data-{k}="{v}"]' for (k, v) in attrs.items()]
+    def content_item_by_attributes(self, multi_history_panel=False, **attrs):
+        suffix_list = [f'[data-{k}="{v}"]' for (k, v) in attrs.items() if v is not None]
         suffix = "".join(suffix_list)
-        return self.components.history_panel.content_item.selector(suffix=suffix)
+        selector = self.components.history_panel.content_item.selector
+        if multi_history_panel:
+            selector = self.components.multi_history_panel.selector(suffix=suffix)
+        return selector(suffix=suffix)
 
     def history_click_create_new(self):
         if not self.is_beta_history():
@@ -1663,24 +1668,18 @@ class NavigatesGalaxy(HasDriver):
         else:
             self.components.history_panel.multi_view_button.wait_for_and_click()
 
-    def history_panel_show_structure(self):
-        if self.is_beta_history():
-            self.use_bootstrap_dropdown(option="show structure", menu="history options")
-        else:
-            self.click_history_option(self.components.history_panel.options_show_history_structure)
-
     def history_multi_view_display_collection_contents(self, collection_hid, collection_type="list"):
         self.open_history_multi_view()
 
         selector = self.history_panel_wait_for_hid_state(collection_hid, "ok", multi_history_panel=True)
         self.click(selector)
-        next_level_element_selector = selector
         for _ in range(len(collection_type.split(":")) - 1):
-            next_level_element_selector = next_level_element_selector.descendant(".dataset-collection-element")
-            self.wait_for_and_click(next_level_element_selector)
+            selector = self.history_panel_wait_for_hid_state(1, "ok", multi_history_panel=True)
+            self.click(selector)
 
-        dataset_selector = next_level_element_selector.descendant(".dataset")
+        dataset_selector = self.history_panel_wait_for_hid_state(1, "ok", multi_history_panel=True)
         self.wait_for_and_click(dataset_selector)
+        self.history_panel_wait_for_hid_state(1, "ok", multi_history_panel=True)
 
     def history_panel_item_view_dataset_details(self, hid):
         if not self.is_beta_history():
@@ -1806,7 +1805,7 @@ class NavigatesGalaxy(HasDriver):
         self.components.masthead.logout.wait_for_and_click()
         try:
             self.components.masthead.logged_out_only.wait_for_visible()
-        except self.TimeoutException as e:
+        except SeleniumTimeoutException as e:
             message = "Clicked logout button but waiting for 'Login or Registration' button failed, perhaps the logout button was clicked before the handler was setup?"
             raise self.prepend_timeout_message(e, message)
         assert (
@@ -2113,7 +2112,7 @@ class NavigatesGalaxy(HasDriver):
         self.screenshot_if(screenshot_after_submit)
 
 
-class NotLoggedInException(TimeoutException):
+class NotLoggedInException(SeleniumTimeoutException):
     def __init__(self, timeout_exception, user_info, dom_message):
         template = "Waiting for UI to reflect user logged in but it did not occur. API indicates no user is currently logged in. %s API response was [%s]. %s"
         msg = template % (dom_message, user_info, timeout_exception.msg)

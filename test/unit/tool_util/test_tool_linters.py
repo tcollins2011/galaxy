@@ -418,6 +418,34 @@ INPUTS_TYPE_CHILD_COMBINATIONS = """
 </tool>
 """
 
+INPUTS_DUPLICATE_NAMES = """
+<tool>
+    <inputs>
+        <param name="dup" type="text"/>
+        <param name="dup" type="text"/>
+        <param name="dup_in_section" type="text"/>
+        <section name="sec">
+            <param name="dup_in_section" type="text"/>
+        </section>
+        <conditional name="cond">
+            <param name="dup_in_cond" type="select">
+                <option value="a">a</option>
+                <option value="b">b</option>
+            </param>
+            <when value="a">
+                <param name="dup_in_cond" type="text"/>
+            </when>
+            <when value="b">
+                <param name="dup_in_cond" type="text"/>
+            </when>
+        </conditional>
+        <param name="dup_in_output" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="dup_in_output"/>
+    </outputs>
+</tool>
+"""
 
 # test tool xml for outputs linter
 OUTPUTS_MISSING = """
@@ -686,11 +714,18 @@ TESTS_DISCOVER_OUTPUTS = """
     <tests>
         <!-- this should be fine -->
         <test>
-            <output name="data_name" count="2">
-                <discovered_data/>
+            <output name="data_name">
+                <discovered_dataset/>
             </output>
             <output_collection name="collection_name">
-                <element count="2">
+                <element count="2"/>
+            </output_collection>
+        </test>
+        <!-- this should be fine as well -->
+        <test>
+            <output name="data_name" count="2"/>
+            <output_collection name="collection_name">
+                <element>
                     <element/>
                 </element>
             </output_collection>
@@ -1204,6 +1239,19 @@ def test_inputs_type_child_combinations(lint_ctx):
     assert len(lint_ctx.error_messages) == 3
 
 
+def test_inputs_duplicate_names(lint_ctx):
+    tool_source = get_xml_tool_source(INPUTS_DUPLICATE_NAMES)
+    run_lint(lint_ctx, inputs.lint_inputs, tool_source)
+    assert len(lint_ctx.info_messages) == 1
+    assert not lint_ctx.valid_messages
+    assert not lint_ctx.warn_messages
+    assert "Tool defines multiple parameters with the same name: 'dup'" in lint_ctx.error_messages
+    assert (
+        "Tool defines an output with a name equal to the name of an input: 'dup_in_output'" in lint_ctx.error_messages
+    )
+    assert len(lint_ctx.error_messages) == 2
+
+
 def test_inputs_repeats(lint_ctx):
     tool_source = get_xml_tool_source(REPEATS)
     run_lint(lint_ctx, inputs.lint_repeats, tool_source)
@@ -1492,19 +1540,19 @@ def test_tests_discover_outputs(lint_ctx):
     tool_source = get_xml_tool_source(TESTS_DISCOVER_OUTPUTS)
     run_lint(lint_ctx, tests.lint_tsts, tool_source)
     assert (
-        "Test 2: test output 'data_name' must have a 'count' attribute and/or 'discovered_datasets' children"
+        "Test 3: test output 'data_name' must have a 'count' attribute and/or 'discovered_dataset' children"
         in lint_ctx.error_messages
     )
     assert (
-        "Test 2: test collection 'collection_name' must have a 'count' attribute or 'element' children"
-        in lint_ctx.error_messages
-    )
-    assert (
-        "Test 2: test collection 'collection_name' must contain nested 'element' tags and/or element childen with a 'count' attribute"
+        "Test 3: test collection 'collection_name' must have a 'count' attribute or 'element' children"
         in lint_ctx.error_messages
     )
     assert (
         "Test 3: test collection 'collection_name' must contain nested 'element' tags and/or element childen with a 'count' attribute"
+        in lint_ctx.error_messages
+    )
+    assert (
+        "Test 4: test collection 'collection_name' must contain nested 'element' tags and/or element childen with a 'count' attribute"
         in lint_ctx.error_messages
     )
     assert not lint_ctx.warn_messages

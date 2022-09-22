@@ -113,11 +113,11 @@ class AdminToolshed(AdminGalaxy):
             # repository dependencies and tool dependencies will be current.  Only allow selecting a different section
             # in the tool panel if the repository was uninstalled and it contained tools that should be displayed in
             # the tool panel.
-            changeset_revision_dict = trans.app.update_repository_manager.get_update_to_changeset_revision_and_ctx_rev(
+            update_to_changeset = trans.app.update_repository_manager.get_update_to_changeset_revision_and_ctx_rev(
                 repository
             )
-            current_changeset_revision = changeset_revision_dict.get("changeset_revision", None)
-            current_ctx_rev = changeset_revision_dict.get("ctx_rev", None)
+            current_changeset_revision = update_to_changeset.changeset_revision
+            current_ctx_rev = update_to_changeset.ctx_rev
             if current_changeset_revision and current_ctx_rev:
                 if current_ctx_rev == repository.ctx_rev:
                     # The uninstalled repository is current.
@@ -1115,27 +1115,19 @@ class AdminToolshed(AdminGalaxy):
             updated_repo_info_dict = encoding_util.tool_shed_decode(encoded_updated_repo_info_dict)
             readme_files_dict = updated_repo_info_dict.get("readme_files_dict", None)
             includes_data_managers = updated_repo_info_dict.get("includes_data_managers", False)
-            includes_datatypes = updated_repo_info_dict.get("includes_datatypes", False)
-            includes_workflows = updated_repo_info_dict.get("includes_workflows", False)
             includes_tool_dependencies = updated_repo_info_dict.get("includes_tool_dependencies", False)
             repo_info_dict = updated_repo_info_dict["repo_info_dict"]
         else:
             # There are no updates available from the tool shed for the repository, so use its locally stored metadata.
             includes_data_managers = False
-            includes_datatypes = False
             includes_tool_dependencies = False
-            includes_workflows = False
             readme_files_dict = None
             tool_dependencies = None
             if metadata:
                 if "data_manager" in metadata:
                     includes_data_managers = True
-                if "datatypes" in metadata:
-                    includes_datatypes = True
                 if "tool_dependencies" in metadata:
                     includes_tool_dependencies = True
-                if "workflows" in metadata:
-                    includes_workflows = True
                 # Since we're reinstalling, we need to send a request to the tool shed to get the README files.
                 params = dict(
                     name=tool_shed_repository.name,
@@ -1247,11 +1239,9 @@ class AdminToolshed(AdminGalaxy):
             no_changes_check_box=no_changes_check_box,
             original_section_name=original_section_name,
             includes_data_managers=includes_data_managers,
-            includes_datatypes=includes_datatypes,
             includes_tools=includes_tools,
             includes_tools_for_display_in_tool_panel=includes_tools_for_display_in_tool_panel,
             includes_tool_dependencies=includes_tool_dependencies,
-            includes_workflows=includes_workflows,
             has_repository_dependencies=has_repository_dependencies,
             install_repository_dependencies_check_box=install_repository_dependencies_check_box,
             install_resolver_dependencies_check_box=install_resolver_dependencies_check_box,

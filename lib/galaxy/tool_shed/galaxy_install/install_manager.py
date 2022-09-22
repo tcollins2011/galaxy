@@ -8,7 +8,6 @@ from galaxy import (
     exceptions,
     util,
 )
-from galaxy.tool_shed.galaxy_install.datatypes import custom_datatype_manager
 from galaxy.tool_shed.galaxy_install.metadata.installed_repository_metadata_manager import (
     InstalledRepositoryMetadataManager,
 )
@@ -43,7 +42,7 @@ class InstallRepositoryManager:
         else:
             self.tpm = tpm
 
-    def get_repository_components_for_installation(
+    def _get_repository_components_for_installation(
         self, encoded_tsr_id, encoded_tsr_ids, repo_info_dicts, tool_panel_section_keys
     ):
         """
@@ -202,44 +201,7 @@ class InstallRepositoryManager:
                 repository_tools_tups,
             )
         if "datatypes" in irmm_metadata_dict:
-            self.update_tool_shed_repository_status(
-                tool_shed_repository,
-                self.install_model.ToolShedRepository.installation_status.LOADING_PROPRIETARY_DATATYPES,
-            )
-            if not tool_shed_repository.includes_datatypes:
-                tool_shed_repository.includes_datatypes = True
-            self.install_model.context.add(tool_shed_repository)
-            self.install_model.context.flush()
-            files_dir = relative_install_dir
-            if shed_config_dict.get("tool_path"):
-                files_dir = os.path.join(shed_config_dict["tool_path"], files_dir)
-            datatypes_config = hg_util.get_config_from_disk(suc.DATATYPES_CONFIG_FILENAME, files_dir)
-            # Load data types required by tools.
-            cdl = custom_datatype_manager.CustomDatatypeLoader(self.app)
-            converter_path, display_path = cdl.alter_config_and_load_proprietary_datatypes(
-                datatypes_config, files_dir, override=False
-            )
-            if converter_path or display_path:
-                # Create a dictionary of tool shed repository related information.
-                repository_dict = cdl.create_repository_dict_for_proprietary_datatypes(
-                    tool_shed=tool_shed,
-                    name=tool_shed_repository.name,
-                    owner=tool_shed_repository.owner,
-                    installed_changeset_revision=tool_shed_repository.installed_changeset_revision,
-                    tool_dicts=irmm_metadata_dict.get("tools", []),
-                    converter_path=converter_path,
-                    display_path=display_path,
-                )
-            if converter_path:
-                # Load proprietary datatype converters
-                self.app.datatypes_registry.load_datatype_converters(
-                    self.app.toolbox, installed_repository_dict=repository_dict, use_cached=True
-                )
-            if display_path:
-                # Load proprietary datatype display applications
-                self.app.datatypes_registry.load_display_applications(
-                    self.app, installed_repository_dict=repository_dict
-                )
+            log.warning("Ignoring tool shed datatypes... these have been deprecated.")
 
     def handle_tool_shed_repositories(self, installation_dict):
         # The following installation_dict entries are all required.
@@ -506,7 +468,7 @@ class InstallRepositoryManager:
                 self.install_model.ToolShedRepository.installation_status.UNINSTALLED,
             ]:
                 repositories_for_installation.append(repository)
-                repo_info_dict, tool_panel_section_key = self.get_repository_components_for_installation(
+                repo_info_dict, tool_panel_section_key = self._get_repository_components_for_installation(
                     tsr_id, ordered_tsr_ids, ordered_repo_info_dicts, ordered_tool_panel_section_keys
                 )
                 filtered_repo_info_dicts.append(repo_info_dict)
@@ -617,11 +579,11 @@ class InstallRepositoryManager:
         if reinstalling:
             # Since we're reinstalling the repository we need to find the latest changeset revision to
             # which it can be updated.
-            changeset_revision_dict = self.app.update_repository_manager.get_update_to_changeset_revision_and_ctx_rev(
+            update_to_changeset = self.app.update_repository_manager.get_update_to_changeset_revision_and_ctx_rev(
                 tool_shed_repository
             )
-            current_changeset_revision = changeset_revision_dict.get("changeset_revision", None)
-            current_ctx_rev = changeset_revision_dict.get("ctx_rev", None)
+            current_changeset_revision = update_to_changeset.changeset_revision
+            current_ctx_rev = update_to_changeset.ctx_rev
             if current_ctx_rev != ctx_rev:
                 repo_path = os.path.abspath(install_dir)
                 hg_util.pull_repository(repo_path, repository_clone_url, current_changeset_revision)
@@ -835,7 +797,7 @@ class InstallRepositoryManager:
                         (
                             prior_repo_info_dict,
                             prior_tool_panel_section_key,
-                        ) = self.get_repository_components_for_installation(
+                        ) = self._get_repository_components_for_installation(
                             prior_install_required_id,
                             tsr_ids,
                             repo_info_dicts,
@@ -844,7 +806,7 @@ class InstallRepositoryManager:
                         ordered_tsr_ids.append(prior_install_required_id)
                         ordered_repo_info_dicts.append(prior_repo_info_dict)
                         ordered_tool_panel_section_keys.append(prior_tool_panel_section_key)
-                repo_info_dict, tool_panel_section_key = self.get_repository_components_for_installation(
+                repo_info_dict, tool_panel_section_key = self._get_repository_components_for_installation(
                     tsr_id, tsr_ids, repo_info_dicts, tool_panel_section_keys=tool_panel_section_keys
                 )
                 if tsr_id not in ordered_tsr_ids:

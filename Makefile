@@ -4,7 +4,6 @@ VENV?=.venv
 IN_VENV=if [ -f "$(VENV)/bin/activate" ]; then . "$(VENV)/bin/activate"; fi;
 RELEASE_CURR:=22.09
 RELEASE_UPSTREAM:=upstream
-TARGET_BRANCH=$(RELEASE_UPSTREAM)/dev
 CONFIG_MANAGE=$(IN_VENV) python lib/galaxy/config/config_manage.py
 PROJECT_URL?=https://github.com/galaxyproject/galaxy
 DOCS_DIR=doc
@@ -28,7 +27,7 @@ docs: ## Generate HTML documentation.
 # Run following commands to setup the Python portion of the requirements:
 #   $ ./scripts/common_startup.sh
 #   $ . .venv/bin/activate
-#   $ pip install -r lib/galaxy/dependencies/dev-requirements.txt
+#   $ pip install -r requirements.txt -r lib/galaxy/dependencies/dev-requirements.txt
 	$(IN_VENV) $(MAKE) -C doc clean
 	$(IN_VENV) $(MAKE) -C doc html
 

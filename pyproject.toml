@@ -49,7 +49,7 @@ cwltool = "==3.1.20211107152837"
 dictobj = "*"
 docutils = "!=0.17, !=0.17.1"
 edam-ontology = "*"
-fastapi = ">=0.68.2, !=0.69.0, !=0.70.0, !=0.70.1"  # https://github.com/tiangolo/fastapi/issues/4041
+fastapi = ">=0.71.0"  # https://github.com/tiangolo/fastapi/issues/4041
 fastapi-utils = "*"
 fs = "*"
 future = "*"
@@ -90,6 +90,7 @@ python-multipart = "*"  # required to support form parsing in FastAPI/Starlette
 PyYAML = "*"
 refgenconf = ">=0.12.0"
 requests = "*"
+rocrate = "*"
 Routes = "*"
 schema-salad = "!=8.3.20220721194857"  # https://github.com/common-workflow-language/schema_salad/issues/575
 social-auth-core = {version = "==4.0.3", extras = ["openidconnect"]}
@@ -110,7 +111,7 @@ WebOb = "*"
 Whoosh = "*"
 zipstream-new = "*"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 ase = ">=3.18.1"
 black = "^22.1.0"
 cwltest = "2.2.20210901154959"

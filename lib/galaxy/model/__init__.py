@@ -17,10 +17,7 @@ import random
 import string
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import (
-    datetime,
-    timedelta,
-)
+from datetime import timedelta
 from enum import Enum
 from string import Template
 from typing import (
@@ -149,7 +146,7 @@ from galaxy.util.form_builder import (
     WorkflowField,
     WorkflowMappingField,
 )
-from galaxy.util.hash_util import new_secure_hash
+from galaxy.util.hash_util import new_insecure_hash
 from galaxy.util.json import safe_loads
 from galaxy.util.sanitize_html import sanitize_html
 
@@ -641,8 +638,8 @@ class User(Base, Dictifiable, RepresentById):
         if User.use_pbkdf2:
             self.password = galaxy.security.passwords.hash_password(cleartext)
         else:
-            self.password = new_secure_hash(text_type=cleartext)
-        self.last_password_change = datetime.now()
+            self.password = new_insecure_hash(text_type=cleartext)
+        self.last_password_change = now()
 
     def set_random_password(self, length=16):
         """
@@ -2596,6 +2593,10 @@ class History(Base, HasTags, Dictifiable, UsesAnnotations, HasName, Serializable
     def empty(self):
         return self.hid_counter is None or self.hid_counter == 1
 
+    @property
+    def count(self):
+        return self.hid_counter - 1
+
     def add_pending_items(self, set_output_hid=True):
         # These are assumed to be either copies of existing datasets or new, empty datasets,
         # so we don't need to set the quota.
@@ -4061,10 +4062,6 @@ class DatasetInstance(UsesCreateAndUpdateTime, _HasTable):
     @property
     def hashes(self):
         return self.dataset.hashes
-
-    def get_raw_data(self):
-        """Returns the full data. To stream it open the file_name and read/write as needed"""
-        return self.datatype.get_raw_data(self)
 
     def get_mime(self):
         """Returns the mime type of the data"""
@@ -6607,7 +6604,7 @@ class GalaxySession(Base, RepresentById):
     def __init__(self, is_valid=False, **kwd):
         super().__init__(**kwd)
         self.is_valid = is_valid
-        self.last_action = self.last_action or datetime.now()
+        self.last_action = self.last_action or now()
 
     def add_history(self, history, association=None):
         if association is None:
@@ -8806,8 +8803,8 @@ class CloudAuthz(Base, _HasTable):
         self.provider = provider
         self.config = config
         self.authn_id = authn_id
-        self.last_update = datetime.now()
-        self.last_activity = datetime.now()
+        self.last_update = now()
+        self.last_activity = now()
         self.description = description
 
     def equals(self, user_id, provider, authn_id, config):

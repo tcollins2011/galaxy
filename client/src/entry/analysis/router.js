@@ -3,29 +3,33 @@ import VueRouter from "vue-router";
 import { getAppRoot } from "onload/loadConfig";
 import { getGalaxyInstance } from "app";
 
-// modules
+// these modules are mounted below the masthead.
 import Analysis from "entry/analysis/modules/Analysis";
 import Home from "entry/analysis/modules/Home";
+import Login from "entry/analysis/modules/Login";
 import WorkflowEditorModule from "entry/analysis/modules/WorkflowEditor";
 
 // routes
+import AdminRoutes from "entry/analysis/routes/admin-routes";
 import LibraryRoutes from "entry/analysis/routes/library-routes";
 
 // child components
 import Citations from "components/Citation/Citations";
+import AboutGalaxy from "components/AboutGalaxy.vue";
 import CollectionEditView from "components/Collections/common/CollectionEditView";
 import CustomBuilds from "components/User/CustomBuilds";
 import DatasetAttributes from "components/DatasetInformation/DatasetAttributes";
 import DatasetDetails from "components/DatasetInformation/DatasetDetails";
 import DatasetError from "components/DatasetInformation/DatasetError";
 import DatasetList from "components/Dataset/DatasetList";
-import DisplayStructured from "components/DisplayStructured";
+import AvailableDatatypes from "components/AvailableDatatypes/AvailableDatatypes";
 import FormGeneric from "components/Form/FormGeneric";
 import Grid from "components/Grid/Grid";
 import GridShared from "components/Grid/GridShared";
 import GridHistory from "components/Grid/GridHistory";
 import HistoryImport from "components/HistoryImport";
-import HistoryView from "components/HistoryView";
+import HistoryView from "components/History/HistoryView";
+import HistoryMultipleView from "components/History/Multiple/MultipleView";
 import InteractiveTools from "components/InteractiveTools/InteractiveTools";
 import InvocationReport from "components/Workflow/InvocationReport";
 import JobDetails from "components/JobInformation/JobDetails";
@@ -33,6 +37,7 @@ import NewUserConfirmation from "components/login/NewUserConfirmation";
 import NewUserWelcome from "components/NewUserWelcome/NewUserWelcome";
 import Sharing from "components/Sharing/Sharing";
 import StoredWorkflowInvocations from "components/Workflow/StoredWorkflowInvocations";
+import ToolAdvancedSearch from "components/Panels/Common/ToolAdvancedSearch";
 import ToolsJson from "components/ToolsView/ToolsSchemaJson/ToolsJson";
 import ToolsView from "components/ToolsView/ToolsView";
 import TourList from "components/Tour/TourList";
@@ -99,6 +104,10 @@ export function getRouter(Galaxy) {
                         props: (route) => ({ config: Galaxy.config, query: route.query }),
                     },
                     {
+                        path: "about",
+                        component: AboutGalaxy,
+                    },
+                    {
                         path: "custom_builds",
                         component: CustomBuilds,
                         redirect: redirectAnon(),
@@ -132,6 +141,10 @@ export function getRouter(Galaxy) {
                         path: "datasets/:datasetId/error",
                         component: DatasetError,
                         props: true,
+                    },
+                    {
+                        path: "datatypes",
+                        component: AvailableDatatypes,
                     },
                     {
                         path: "histories/import",
@@ -178,11 +191,9 @@ export function getRouter(Galaxy) {
                         }),
                     },
                     {
-                        path: "histories/show_structure",
-                        component: DisplayStructured,
-                        props: (route) => ({
-                            id: route.query.id,
-                        }),
+                        path: "histories/view_multiple",
+                        component: HistoryMultipleView,
+                        props: true,
                     },
                     {
                         path: "histories/:historyId/export",
@@ -263,6 +274,15 @@ export function getRouter(Galaxy) {
                         path: "tours/:tourId",
                         component: TourRunner,
                         props: true,
+                    },
+                    {
+                        path: "tools/advanced_search",
+                        component: ToolAdvancedSearch,
+                        props: (route) => {
+                            return {
+                                ...route.query,
+                            };
+                        },
                     },
                     {
                         path: "tools/view",
@@ -413,7 +433,9 @@ export function getRouter(Galaxy) {
                     },
                 ],
             },
+            { path: "/login/start", component: Login },
             { path: "/workflows/edit", component: WorkflowEditorModule },
+            ...AdminRoutes,
             ...LibraryRoutes,
         ],
     });

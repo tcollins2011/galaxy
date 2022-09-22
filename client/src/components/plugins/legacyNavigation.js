@@ -13,7 +13,7 @@ export function iframeAdd({ path, title = "Galaxy", $router = null }) {
     if (Galaxy.frame && Galaxy.frame.active) {
         Galaxy.frame.add({
             title: _l(title),
-            url: prependPath(path),
+            url: path,
         });
         return true;
     } else if ($router) {
@@ -45,18 +45,12 @@ export function redirect(path) {
     redirectToUrl(prependPath(path));
 }
 
-// arbitrary Galaxy wrapper
-export function useGalaxy(fn) {
-    return fn(getGalaxyInstance());
-}
-
 // wrapper for navigation to be used as mixin
 export const legacyNavigationMixin = {
     methods: {
         redirect,
         iframeAdd,
         iframeRedirect,
-        useGalaxy,
         prependPath,
     },
 };

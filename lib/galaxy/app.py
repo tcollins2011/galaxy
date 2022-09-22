@@ -91,7 +91,6 @@ from galaxy.security.vault import (
     Vault,
     VaultFactory,
 )
-from galaxy.tool_shed import tool_shed_registry
 from galaxy.tool_shed.galaxy_install.installed_repository_manager import InstalledRepositoryManager
 from galaxy.tool_shed.galaxy_install.update_repository_manager import UpdateRepositoryManager
 from galaxy.tool_util.deps import containers
@@ -120,6 +119,7 @@ from galaxy.util import (
 )
 from galaxy.util.dbkeys import GenomeBuilds
 from galaxy.util.task import IntervalTask
+from galaxy.util.tool_shed import tool_shed_registry
 from galaxy.visualization.data_providers.registry import DataProviderRegistry
 from galaxy.visualization.genomes import Genomes
 from galaxy.visualization.plugins.registry import VisualizationsRegistry
@@ -205,9 +205,10 @@ class SentryClientMixin:
             self.application_stack.register_postfork_function(postfork_sentry_client)
 
 
-class ConfiguresGalaxyMixin:
-    """Shared code for configuring Galaxy-like app objects."""
+class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMixin):
+    """Encapsulates the state of a minimal Galaxy application"""
 
+    model: GalaxyModelMapping
     config: config.GalaxyAppConfiguration
     tool_cache: ToolCache
     job_config: jobs.JobConfiguration
@@ -215,6 +216,48 @@ class ConfiguresGalaxyMixin:
     toolbox_search: ToolBoxSearch
     container_finder: containers.ContainerFinder
     install_model: ModelMapping
+
+    def __init__(self, fsmon=False, **kwargs) -> None:
+        super().__init__()
+        self.haltables = [
+            ("object store", self._shutdown_object_store),
+            ("database connection", self._shutdown_model),
+        ]
+        self._register_singleton(BasicSharedApp, self)
+        if not log.handlers:
+            # Paste didn't handle it, so we need a temporary basic log
+            # configured.  The handler added here gets dumped and replaced with
+            # an appropriately configured logger in configure_logging below.
+            logging.basicConfig(level=logging.DEBUG)
+        log.debug("python path is: %s", ", ".join(sys.path))
+        self.name = "galaxy"
+        self.is_webapp = False
+        # Read config file and check for errors
+        self.config: Any = self._register_singleton(config.Configuration, config.Configuration(**kwargs))
+        self.config.check()
+        self._configure_object_store(fsmon=True)
+        self._register_singleton(BaseObjectStore, self.object_store)
+        config_file = kwargs.get("global_conf", {}).get("__file__", None)
+        if config_file:
+            log.debug('Using "galaxy.ini" config file: %s', config_file)
+        self._configure_models(check_migrate_databases=self.config.check_migrate_databases, config_file=config_file)
+        # Security helper
+        self._configure_security()
+        self._register_singleton(IdEncodingHelper, self.security)
+        self._register_singleton(SharedModelMapping, self.model)
+        self._register_singleton(GalaxyModelMapping, self.model)
+        self._register_singleton(galaxy_scoped_session, self.model.context)
+        self._register_singleton(install_model_scoped_session, self.install_model.context)
+
+    def configure_fluent_log(self):
+        if self.config.fluent_log:
+            from galaxy.util.custom_logging.fluent_log import FluentTraceLogger
+
+            self.trace_logger: Optional[FluentTraceLogger] = FluentTraceLogger(
+                "galaxy", self.config.fluent_host, self.config.fluent_port
+            )
+        else:
+            self.trace_logger = None
 
     def _configure_genome_builds(self, data_table_name="__dbkeys__", load_old_style=True):
         self.genome_builds = GenomeBuilds(self, data_table_name=data_table_name, load_old_style=load_old_style)
@@ -327,19 +370,9 @@ class ConfiguresGalaxyMixin:
             if exc.errno != errno.ENOENT or self.config.is_set("shed_tool_data_table_config"):
                 raise
 
-    def _configure_datatypes_registry(
-        self, installed_repository_manager=None, use_display_applications=True, use_converters=True
-    ):
+    def _configure_datatypes_registry(self, use_display_applications=True, use_converters=True):
         # Create an empty datatypes registry.
         self.datatypes_registry = Registry(self.config)
-        if installed_repository_manager and self.config.load_tool_shed_datatypes:
-            # Load proprietary datatypes defined in datatypes_conf.xml files in all installed tool shed repositories.  We
-            # load proprietary datatypes before datatypes in the distribution because Galaxy's default sniffers include some
-            # generic sniffers (eg text,xml) which catch anything, so it's impossible for proprietary sniffers to be used.
-            # However, if there is a conflict (2 datatypes with the same extension) between a proprietary datatype and a datatype
-            # in the Galaxy distribution, the datatype in the Galaxy distribution will take precedence.  If there is a conflict
-            # between 2 proprietary datatypes, the datatype from the repository that was installed earliest will take precedence.
-            installed_repository_manager.load_proprietary_datatypes()
         # Load the data types in the Galaxy distribution, which are defined in self.config.datatypes_config.
         datatypes_configs = self.config.datatypes_config
         for datatypes_config in listify(datatypes_configs):
@@ -452,54 +485,6 @@ class ConfiguresGalaxyMixin:
     def tool_dependency_dir(self):
         return self.toolbox.dependency_manager.default_base_path
 
-
-class MinimalGalaxyApplication(BasicSharedApp, ConfiguresGalaxyMixin, HaltableContainer, SentryClientMixin):
-    """Encapsulates the state of a minimal Galaxy application"""
-
-    model: GalaxyModelMapping
-
-    def __init__(self, fsmon=False, **kwargs) -> None:
-        super().__init__()
-        self.haltables = [
-            ("object store", self._shutdown_object_store),
-            ("database connection", self._shutdown_model),
-        ]
-        self._register_singleton(BasicSharedApp, self)
-        if not log.handlers:
-            # Paste didn't handle it, so we need a temporary basic log
-            # configured.  The handler added here gets dumped and replaced with
-            # an appropriately configured logger in configure_logging below.
-            logging.basicConfig(level=logging.DEBUG)
-        log.debug("python path is: %s", ", ".join(sys.path))
-        self.name = "galaxy"
-        self.is_webapp = False
-        # Read config file and check for errors
-        self.config: Any = self._register_singleton(config.Configuration, config.Configuration(**kwargs))
-        self.config.check()
-        self._configure_object_store(fsmon=True)
-        self._register_singleton(BaseObjectStore, self.object_store)
-        config_file = kwargs.get("global_conf", {}).get("__file__", None)
-        if config_file:
-            log.debug('Using "galaxy.ini" config file: %s', config_file)
-        self._configure_models(check_migrate_databases=self.config.check_migrate_databases, config_file=config_file)
-        # Security helper
-        self._configure_security()
-        self._register_singleton(IdEncodingHelper, self.security)
-        self._register_singleton(SharedModelMapping, self.model)
-        self._register_singleton(GalaxyModelMapping, self.model)
-        self._register_singleton(galaxy_scoped_session, self.model.context)
-        self._register_singleton(install_model_scoped_session, self.install_model.context)
-
-    def configure_fluent_log(self):
-        if self.config.fluent_log:
-            from galaxy.util.custom_logging.fluent_log import FluentTraceLogger
-
-            self.trace_logger: Optional[FluentTraceLogger] = FluentTraceLogger(
-                "galaxy", self.config.fluent_host, self.config.fluent_port
-            )
-        else:
-            self.trace_logger = None
-
     def _shutdown_object_store(self):
         self.object_store.shutdown()
 
@@ -583,7 +568,6 @@ class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
         )
         self.dynamic_tool_manager = self._register_singleton(DynamicToolManager)
         self._configure_datatypes_registry(
-            self.installed_repository_manager,
             use_converters=use_converters,
             use_display_applications=use_display_applications,
         )
@@ -659,8 +643,6 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication):
         self.update_repository_manager = self._register_singleton(
             UpdateRepositoryManager, UpdateRepositoryManager(self)
         )
-        # Load proprietary datatype converters and display applications.
-        self.installed_repository_manager.load_proprietary_converters_and_display_applications()
         # Load datatype display applications defined in local datatypes_conf.xml
         self.datatypes_registry.load_display_applications(self)
         # Load datatype converters defined in local datatypes_conf.xml

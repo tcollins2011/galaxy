@@ -68,7 +68,10 @@ from galaxy.schema import (
     SerializationParams,
     ValueFilterQueryParams,
 )
-from galaxy.schema.fields import DecodedDatabaseIdField
+from galaxy.schema.fields import (
+    DecodedDatabaseIdField,
+    LibraryFolderDatabaseIdField,
+)
 from galaxy.schema.schema import (
     AnyBulkOperationParams,
     AnyHistoryContentItem,
@@ -178,7 +181,7 @@ class CreateHistoryContentPayloadFromCopy(CreateHistoryContentPayloadBase):
         title="Source",
         description="The source of the content. Can be other history element to be copied or library elements.",
     )
-    content: Optional[DecodedDatabaseIdField] = Field(
+    content: Optional[Union[DecodedDatabaseIdField, LibraryFolderDatabaseIdField]] = Field(
         None,
         title="Content",
         description=(
@@ -565,14 +568,13 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         trans,
         request: MaterializeDatasetInstanceRequest,
     ) -> AsyncTaskResultSummary:
-        history_id = self.decode_id(request.history_id)
         # DO THIS JUST TO MAKE SURE IT IS OWNED...
-        self.history_manager.get_owned(history_id, trans.user, current_history=trans.history)
+        self.history_manager.get_owned(request.history_id, trans.user, current_history=trans.history)
         assert trans.app.config.enable_celery_tasks
         task_request = MaterializeDatasetInstanceTaskRequest(
-            history_id=history_id,
+            history_id=request.history_id,
             source=request.source,
-            content=self.decode_id(request.content),
+            content=request.content,
             user=trans.async_request_user,
         )
         results = materialize_task.delay(request=task_request)
@@ -587,16 +589,14 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         """
         Set permissions of the given dataset to the given role ids.
 
-        :param   payload: dictionary structure containing:
-            :param  action:     (required) describes what action should be performed
-                                available actions: make_private, remove_restrictions, set_permissions
-            :type   action:     string
-            :param  access_ids[]:      list of Role.id defining roles that should have access permission on the dataset
-            :type   access_ids[]:      string or list
-            :param  manage_ids[]:      list of Role.id defining roles that should have manage permission on the dataset
-            :type   manage_ids[]:      string or list
-            :param  modify_ids[]:      list of Role.id defining roles that should have modify permission on the library dataset item
-            :type   modify_ids[]:      string or list
+        :type payload: dict
+        :param payload: dictionary structure containing:
+
+            - action: (required) describes what action should be performed.
+              Available actions: make_private, remove_restrictions, set_permissions
+            - access_ids[]: list of Role.id defining roles that should have access permission on the dataset
+            - manage_ids[]: list of Role.id defining roles that should have manage permission on the dataset
+            - modify_ids[]: list of Role.id defining roles that should have modify permission on the library dataset item
 
         :raises: RequestParameterInvalidException, ObjectNotFound, InsufficientPermissionsException, InternalServerError
                     RequestParameterMissingException
@@ -606,7 +606,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         assert hda is not None
         self.hda_manager.update_permissions(trans, hda, **payload_dict)
         roles = self.hda_manager.serialize_dataset_association_roles(trans, hda)
-        return DatasetAssociationRoles.parse_obj(roles)
+        return DatasetAssociationRoles.construct(**roles)
 
     def update(
         self,
@@ -846,7 +846,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
 
         # if dry_run, return the structure as json for debugging
         if dry_run:
-            return HistoryContentsArchiveDryRunResult.parse_obj(paths_and_files)
+            return HistoryContentsArchiveDryRunResult.construct(__root__=paths_and_files)
 
         # create the archive, add the dataset files, then stream the archive as a download
         archive = ZipstreamWrapper(
@@ -872,9 +872,12 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         """
         Return {limit} history items "near" the {hid}. The {direction} determines what items
         are selected:
+
         - before: select items with hid < {hid}
         - after:  select items with hid > {hid}
-        - near:   select items "around" {hid}, so that |before| <= limit // 2, |after| <= limit // 2 + 1
+        - near:   select items "around" {hid}, so that
+          n. items before <= limit // 2,
+          n. items after <= limit // 2 + 1
 
         Additional counts provided in the HTTP headers.
         """
@@ -1365,7 +1368,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         trans.sa_session.flush()
         return self.hda_serializer.serialize_to_view(hda, user=trans.user, trans=trans, **serialization_params.dict())
 
-    def __create_hda_from_ldda(self, trans, history: History, ldda_id: DecodedDatabaseIdField):
+    def __create_hda_from_ldda(self, trans, history: History, ldda_id: int):
         decoded_ldda_id = ldda_id
         ld = self.ldda_manager.get(trans, decoded_ldda_id)
         if type(ld) is not LibraryDataset:
@@ -1375,7 +1378,7 @@ class HistoriesContentsService(ServiceBase, ServesExportStores, ConsumesModelSto
         hda = ld.library_dataset_dataset_association.to_history_dataset_association(history, add_to_history=True)
         return hda
 
-    def __create_hda_from_copy(self, trans, history: History, original_hda_id: DecodedDatabaseIdField):
+    def __create_hda_from_copy(self, trans, history: History, original_hda_id: int):
         original = self.hda_manager.get_accessible(original_hda_id, trans.user)
         # check for access on history that contains the original hda as well
         self.history_manager.error_unless_accessible(original.history, trans.user, current_history=trans.history)

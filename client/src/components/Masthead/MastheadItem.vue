@@ -5,14 +5,14 @@
         v-b-tooltip.hover.bottom
         v-b-popover.manual.bottom="{ id: tab.id, content: popoverNote, html: true }"
         :class="classes"
-        :style="styles"
-        :href="formatUrl(tab.url)"
+        :href="getPath(tab.url)"
         :target="tab.target || '_parent'"
-        role="menuitem"
         :link-classes="linkClasses"
         :title="tab.tooltip"
         @click="open(tab, $event)">
         <template v-if="tab.icon">
+            <!-- If this is an icon-based tab, inject tooltip directly for screen readers -->
+            <span class="sr-only">{{ tab.tooltip || tab.id }}</span>
             <span :class="iconClasses" />
             <span v-if="toggle" class="nav-note fa fa-check" />
         </template>
@@ -27,7 +27,6 @@
         v-b-tooltip.hover.bottom
         v-b-popover.manual.bottom="{ id: tab.id, content: popoverNote, html: true }"
         :class="classes"
-        :style="styles"
         :text="tab.title"
         href="#"
         :title="tab.tooltip"
@@ -37,10 +36,11 @@
             <b-dropdown-item
                 v-else-if="item.hidden !== true"
                 :key="`item-${idx}`"
-                :href="formatUrl(item.url)"
+                :href="getPath(item.url)"
                 :target="item.target || '_parent'"
                 role="menuitem"
-                :disabled="item.disabled === true"
+                :active="item.disabled"
+                :disabled="item.disabled"
                 @click="open(item, $event)">
                 {{ item.title }}
             </b-dropdown-item>
@@ -52,8 +52,7 @@
 import Vue from "vue";
 import { VBPopoverPlugin, VBTooltipPlugin } from "bootstrap-vue";
 import { BNavItem, BNavItemDropdown, BDropdownItem } from "bootstrap-vue";
-import { getAppRoot } from "onload/loadConfig";
-import { getGalaxyInstance } from "app";
+import { safePath } from "utils/redirect";
 
 Vue.use(VBPopoverPlugin);
 Vue.use(VBTooltipPlugin);
@@ -84,7 +83,7 @@ export default {
             return this.tab.menu;
         },
         popoverNote() {
-            return `Please <a href="${getAppRoot()}login">log in or register</a> to use this feature.`;
+            return `Please <a href="${safePath("/login")}">log in or register</a> to use this feature.`;
         },
         classes() {
             const isActiveTab = this.tab.id == this.activeTab;
@@ -105,14 +104,6 @@ export default {
                 [this.tab.icon, this.tab.icon],
             ]);
         },
-        styles() {
-            return {
-                visibility: this.tab.visible ? "visible" : "hidden",
-            };
-        },
-        galaxyIframe() {
-            return document.getElementById("galaxy_main");
-        },
     },
     mounted() {
         window.addEventListener("blur", this.hideDropdown);
@@ -125,6 +116,9 @@ export default {
             if (this.$refs.dropdown) {
                 this.$refs.dropdown.hide();
             }
+        },
+        getPath(url) {
+            return safePath(url);
         },
         open(tab, event) {
             if (tab.onclick) {
@@ -140,25 +134,7 @@ export default {
                 }, 3000);
             } else if (!tab.menu) {
                 event.preventDefault();
-                const Galaxy = getGalaxyInstance();
-                if (tab.target === "__use_router__" && this.$router) {
-                    this.$router.push(`/${tab.url}`);
-                } else if (tab.target === "__use_router__" && typeof Galaxy.page !== "undefined") {
-                    Galaxy.page.router.executeUseRouter(this.formatUrl(tab.url));
-                } else {
-                    try {
-                        Galaxy.frame.add({ ...tab, url: this.formatUrl(tab.url) });
-                    } catch (err) {
-                        console.warn("Missing frame element on galaxy instance", err);
-                    }
-                }
-            }
-        },
-        formatUrl(url) {
-            if (typeof url === "string" && url.indexOf("//") === -1 && url.charAt(0) != "/") {
-                return getAppRoot() + url;
-            } else {
-                return url;
+                this.$emit("open-url", { ...tab });
             }
         },
     },

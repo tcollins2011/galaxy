@@ -443,17 +443,6 @@ mapping:
           File containing the Galaxy Tool Sheds that should be made available to
           install from in the admin interface (.sample used if default does not exist).
 
-      load_tool_shed_datatypes:
-        type: bool
-        default: true
-        required: false
-        desc: |
-          This option controls whether legacy datatypes are loaded from installed tool shed repositories.
-          We're are in the process of disabling Tool Shed datatypes. This option with a default of true
-          will be added in 22.01, we will disable the datatypes on the big public servers during that
-          release. This option will be switched to False by default in 22.05 and this broken functionality
-          will be removed all together during some future release.
-
       watch_tools:
         type: str
         default: 'false'
@@ -1862,12 +1851,41 @@ mapping:
           If true, Galaxy will attempt to configure a simple root logger if a
           "loggers" section does not appear in this configuration file.
 
+      log_destination:
+        type: str
+        default: stdout
+        required: false
+        desc: |
+          Log destination, defaults to special value "stdout" that logs to standard output. If set to anything else,
+          then it will be interpreted as a path that will be used as the log file, and logging to stdout will be
+          disabled.
+
+      log_rotate_size:
+        type: str
+        default: "0"
+        required: false
+        desc: |
+          Size of log file at which size it will be rotated as per the documentation in
+          https://docs.python.org/library/logging.handlers.html#logging.handlers.RotatingFileHandler
+          If log_rotate_count is not also set, no log rotation will be performed. A value of 0 (the default) means no
+          rotation. Size can be a number of bytes or a human-friendly representation like "100 MB" or "1G".
+
+      log_rotate_count:
+        type: int
+        default: 0
+        required: false
+        desc: |
+          Number of log file backups to keep, per the documentation in
+          https://docs.python.org/library/logging.handlers.html#logging.handlers.RotatingFileHandler
+          Any additional rotated log files will automatically be pruned. If log_rotate_size is not also set, no log
+          rotation will be performed. A value of 0 (the default) means no rotation.
+
       log_level:
         type: str
         default: DEBUG
         required: false
         desc: |
-          Verbosity of console log messages.  Acceptable values can be found here:
+          Verbosity of console log messages. Acceptable values can be found here:
           https://docs.python.org/library/logging.html#logging-levels
           A custom debug level of "TRACE" is available for even more verbosity.
 
@@ -1875,9 +1893,8 @@ mapping:
         type: map
         allowempty: true
         desc: |
-          Controls where and how the server logs messages. If unset, the default is to log all messages to standard
-          output at the level defined by the `log_level` configuration option. Configuration is described in the
-          documentation at:
+          Controls where and how the server logs messages. If set, overrides all settings in the log_* configuration
+          options. Configuration is described in the documentation at:
           https://docs.galaxyproject.org/en/master/admin/config_logging.html
 
       database_engine_option_echo:
@@ -1953,7 +1970,7 @@ mapping:
           their HTML sanitized on display.  This can be manually edited or manipulated
           through the Admin control panel -- see "Manage Allowlist"
 
-          The value of this option will be resolved with respect to <mutable_config_dir>.
+          The value of this option will be resolved with respect to <managed_config_dir>.
 
       serve_xss_vulnerable_mimetypes:
         type: bool
@@ -2399,6 +2416,13 @@ mapping:
           If use_remote_user is enabled, you can set this to a URL that will log your
           users out.
 
+      post_user_logout_href:
+        type: str
+        default: /root/login?is_logout_redirect=true
+        required: false
+        desc: |
+          This is the default url to which users are redirected after they log out.
+
       normalize_remote_user_email:
         type: bool
         default: false
@@ -2733,9 +2757,10 @@ mapping:
           Optional list of email addresses of API users who can make calls on behalf of
           other users.
 
-      master_api_key:
+      bootstrap_admin_api_key:
         type: str
         required: false
+        deprecated_alias: master_api_key
         desc: |
           API key that allows performing some admin actions without actually
           having a real admin user in the database and config.

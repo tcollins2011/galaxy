@@ -1,7 +1,7 @@
 <template>
     <div
         :id="contentId"
-        :class="['content-item m-1 p-0 rounded content-buttons', contentCls]"
+        :class="['content-item m-1 p-0 rounded btn-transparent-background', contentCls]"
         :data-hid="id"
         :data-state="state">
         <div class="p-1 cursor-pointer" draggable @dragstart="onDragStart" @click.stop="onClick">
@@ -160,10 +160,10 @@ export default {
                         return state;
                     }
                 }
-                return "ok";
-            } else {
+            } else if (this.item.state) {
                 return this.item.state;
             }
+            return "ok";
         },
         tags() {
             return this.item.tags;
@@ -186,7 +186,7 @@ export default {
                 display: `/datasets/${id}/display/?preview=True`,
                 edit: `/datasets/edit/${id}`,
                 showDetails: `/datasets/${id}/details`,
-                reportError: `/datasets/error?dataset_id=${id}`,
+                reportError: `/datasets/${id}/error`,
                 rerun: `/tool_runner/rerun?id=${id}`,
                 visualize: `/visualizations?dataset_id=${id}`,
             };
@@ -224,7 +224,7 @@ export default {
     },
 };
 </script>
-<style>
+<style lang="scss">
 .content-item:hover {
     filter: brightness(105%);
 }
