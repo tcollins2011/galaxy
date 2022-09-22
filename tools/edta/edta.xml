@@ -50,6 +50,8 @@
         --type '$function_select.te_type'
         && mv ./input.fa.mod.EDTA.raw/input.fa.mod* .
     ## Benchmark
+    ## Need to see if this works
+    ## MSU7 rice genome
     #else if $function_select.function =='benchmark':
         #if $function_select.benchmark_step == 'annotate_genome':
             ln -s '$function_select.genome' ./input.fa &&
@@ -63,18 +65,15 @@
             -lib input.fa
             -cutoff 225
             '$function_select.benchmark_select.annotate_library'
-        
+        ## Need to see if this works
         #else if $function_select.benchmark_step == 'benchmark_genome':
-            echo 'hi'
-            ## ln -s '$function_select.genome' ./input.fa &&
-            ## ls &&
-            ## echo 'hi'
-            ## perl /EDTA/lib-test.pl 
-            ## -genome input.fa
-            ## -std ./database/Rice_MSU7.fasta.std6.9.5.out
-            ## -tst '$function_select.tst'
-            ## -cat '$function_select.cat'
-            ## -N '$function_select.N'
+            ln -s '$function_select.genome' ./input.fa &&
+            perl /EDTA/lib-test.pl 
+            -genome input.fa
+            -std ./database/Rice_MSU7.fasta.std6.9.5.out
+            -tst '$function_select.tst'
+            -cat '$function_select.cat'
+            -N '$function_select.N'
         #end if
 
     ## pan-EDTA
@@ -111,7 +110,8 @@
        
         #for $i in $cds_list
             bash $__tool_directory__/test.sh $i &&
-        #end for 
+        #end for
+         
         ls
 
 
@@ -127,10 +127,21 @@
             </param>
             <!-- pan-EDTA run -->
             <when value="pan-edta">
+                <!-- <expand macro="pan_edta"></expand>-->
                 <repeat name="te_library" title="TE_Library">
-                    <expand macro="pan_edta"></expand>
-                </repeat>
-                
+                    <param name="genome" argument="--genome" type="data" format="fasta" label="Genome File" help="The Genome FASTA file"/>
+                    <param name='species' argument ="--species" type="select" label="Which species should be used for identification of TIR candidates">
+                        <option value="Others">Others</option>
+                        <option value="Rice">Rice</option>
+                        <option value="Maize">Maize</option>
+                    </param>
+                    <param name="cds" argument="--cds" type="data" format="fasta" label="Coding Sequence File" optional='true' help="Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative."/> 
+                    <param name="curatedlib" argument="--curatedlib" type="data" format="fasta" label="Curated Library File" optional='true' help="Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here."/>
+                    <param name="sensitive" argument="--sensitive" type="boolean"  truevalue="1" falsevalue="0"  label="Use RepeatModeler to identify remaining TEs" help="Use RepeatModeler to identify remaining TEs This step is very slow and MAY help to recover some TEs."/>
+                    <param name="mutation_rate" argument="--u" type="float" optional="True" label="Neutral Mutation Rate" help="Neutral mutation rate to calculate the age of intact LTR elements. Default: 1.3e-8 (per bp per year, from rice)"></param>
+                    <param name="evaluate" argument="--evaluate" type="boolean" truevalue="1" falsevalue="0" label="evaluate" help="Evaluate (1) classification consistency of the TE annotation " />
+                    <param name="exclude" argument="--exclude" type="data" format="bed" label="Exclude" help="Exclude bed format regions from TE annotation" optional="true"/>
+                </repeat> 
             </when>
             <!-- Default EDTA run -->
             <when value="genome">
@@ -183,8 +194,6 @@
                 </conditional>
             </when>
         </conditional>
-
-
     </inputs>
     <outputs>
         <!--  Genome to TE Annotations-->
@@ -279,8 +288,8 @@
 
     </outputs>
     <tests>
-         <!--  Genome to TE Annotations-->
-       <test expect_num_outputs="8">
+        <!--  Genome to TE Annotations-->
+        <test expect_num_outputs="8">
             <conditional name="function_select">
                 <param name='genome' value='test_genome.fa' ftype='fasta'/>
                 <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
@@ -290,29 +299,17 @@
                 <param name ='sensitive' value='1' />
                 <conditional name ='anno_select'>
                     <param name='anno' value='yes'/>
-                </conditional>
-                <param name='evaluate' value='1' />
-                <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                    <param name='evaluate' value='1' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                </conditional>  
             </conditional>
             <output name='outfile_library'>
                 <assert_contents>
                     <has_text text='Helitron'></has_text>
-                    <has_text text='>RST-Osativa-Cluster_0#SINE/unknown  match=NEW'></has_text>
                 </assert_contents>
             </output>
-            <output name='Novel_TE_Families'>
-                <assert_contents>
-                    <has_text text='>RST-Osativa-Cluster_0#SINE/unknown  match=NEW'></has_text>
-                    <has_text text='>RST-Osativa-Cluster_2#SINE/unknown  match=SINE9_OS|tRNA|Oryza_sativa|Repbase'></has_text>
-                </assert_contents>
-            </output>
-            <output name=''>
-                <assert_contents>
-                    <has_text text=' RST-Osativa-Cluster_7      1            175          0.02% '></has_text>
-                </assert_contents>
-            </output>
-       </test>
-       <test expect_num_outputs="5">
+        </test>
+        <test expect_num_outputs="5">
             <conditional name="function_select">
                 <param name='genome' value='test_genome.fa' ftype='fasta'/>
                 <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
@@ -322,46 +319,80 @@
                 <param name ='sensitive' value='1' />
                 <conditional name ='anno_select'>
                     <param name='anno' value='yes'/>
+                    <param name='evaluate' value='0' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
                 </conditional>
-                <param name='evaluate' value='0' />
-                <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
             </conditional>
-       </test>
-       <test expect_num_outputs="1">
-        <conditional name="function_select">
-            <param name='genome' value='test_genome.fa' ftype='fasta'/>
-            <param name='speices' value='Others' />
-            <param name='step' value='all' />
-            <param name ='sensitive' value='1' />
-            <conditional name ='anno_select'>
-                <param name='anno' value='no'/>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="function_select">
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='speices' value='Others' />
+                <param name='step' value='all' />
+                <param name ='sensitive' value='1' />
+                <conditional name ='anno_select'>
+                    <param name='anno' value='no'/>
+                </conditional>
             </conditional>
-        </conditional>
-   </test>
+        </test>
+        
 
         <!-- Find elements of a paticular TE type -->
+        <test expect_num_outputs="3">
+            <conditional name="function_select">
+                <param name="function" value="te"/>
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='species' value='Others'/>
+                <param name="te_type" value="ltr"/>
+            </conditional>
+        </test>
         <!-- Benchmark -->
+        <!-- pan-EDTA -->
+        <!-- <test expect_num_outputs="1">
+            <conditional name="function_select">
+                <param name="function" value="pan-edta"></param>
+                <repeat name="te_library">
+                    <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                    <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
+                    <param name='species' value='Others' />
+                    <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
+                    <param name ='sensitive' value='1' />
+                    <param name='evaluate' value='1' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                </repeat>
+            </conditional>
+        </test> -->
     </tests>
     <citations>
         <citation type="doi">10.1186/s13059-019-1905-y</citation>
     </citations>
     <help><![CDATA[
-        
+    
+===============================================        
 **The Extensive *de novo* TE Annotator (EDTA)**
------------------------------------------------
+===============================================
         
+.. class:: infomark
+
+**What it does**
 
 This package is developed for automated whole-genome de-novo TE annotation and benchmarking the annotation performance of TE libraries.
 
-The EDTA package was designed to filter out false discoveries in raw TE candidates and generate a high-quality non-redundant TE library for whole-genome TE annotations. Selection of initial search programs were based on benckmarkings on the annotation performance using a manually curated TE library in the rice genome.
-        
+----
 
+The EDTA package was designed to filter out false discoveries in raw TE candidates and generate a high-quality non-redundant TE library for whole-genome TE annotations. Selection of initial search programs were based on benckmarkings on the annotation performance using a manually curated TE library in the rice genome.
+
+.. image:: https://github.com/oushujun/EDTA/blob/master/development/EDTA%20workflow.png?raw=true
+    :alt: several example circos plots
+
+''''''''''
 **Inputs**
-----------
+''''''''''
+
 
 **Required**
 
-The genome file [FASTA]. Please make sure sequence names are short (<=13 characters) and simple (i.e, letters, numbers, and underscore).
+1. **The genome file [FASTA]**. Please make sure sequence names are short (<=13 characters) and simple (i.e, letters, numbers, and underscore).
 
 **Optional**
 
@@ -369,10 +400,11 @@ The genome file [FASTA]. Please make sure sequence names are short (<=13 charact
 2. Known gene positions of this version of the genome assembly [BED]. Coordinates specified in this file will be excluded from TE annotation to avoid over-masking.
 3. Curated TE library of the species [FASTA]. This file is trusted 100%. Please make sure it's curated. If you only have a couple of curated sequences, that's fine. It doesn't need to be complete. Providing curated TE sequences, especially for those under annotated TE types (i.e., SINEs and LINEs), will greatly improve the annotation quality.
 
+'''''''''''
 **Outputs**
------------
+'''''''''''
 
-A non-redundant TE library. The curated library will be included in this file if provided. TEs are classified into the superfamily level and using the three-letter naming system reported in Wicker et al. (2007).(https://www.nature.com/articles/nrg2165). Each sequence can be considered as a TE family.
+1. **A non-redundant TE library.** The curated library will be included in this file if provided. TEs are classified into the superfamily level and using the three-letter naming system reported in Wicker et al. (2007).(https://www.nature.com/articles/nrg2165). Each sequence can be considered as a TE family.
 
 **Optional**
 
@@ -384,8 +416,102 @@ A non-redundant TE library. The curated library will be included in this file if
 6. Annotation inconsistency for nested TEs: (`anno and evaluate` required).
 7. Overall annotation inconsistency: (`anno and evaluate` required).
 
+'''''''''''''''
+**EDTA Usage**
+'''''''''''''''
+`````````````````````
+**From head to toe:**
+`````````````````````
+*You got a genome and you want to get a high-quality TE annotation:*
 
 
+- **--genome** [File]		The genome FASTA file. Required.
+
+- **--species** [Rice|Maize|others]	Specify the species for identification of TIR candidates. Default: others
+
+- **--step** [all|filter|final|anno]	Specify which steps you want to run EDTA.
+
+    1. all: run the entire pipeline (default
+    2. filter: start from raw TEs to the end.
+    3. final: start from filtered TEs to finalizing the run.
+    4. anno: perform whole-genome annotation/analysis after TE library construction.
+
+- **--overwrite** [0|1]	If previous results are found, decide to overwrite (1, rerun) or not (0, default).
+
+- **--cds** [File]	Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative.
+
+- **--curatedlib** [file]	Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here.This option is not mandatory. It's totally OK if no file is provided (default).
+
+- **--sensitive** [0|1]		Use RepeatModeler to identify remaining TEs (1) or not (0, default). This step is very slow and MAY help to recover some TEs.
+
+- **--anno** [0|1]	Perform (1) or not perform (0, default) whole-genome TE annotation after TE library construction.
+
+- **--rmout** [File]	Provide your own homology-based TE annotation instead of using the EDTA library for masking. File is in RepeatMasker .out format. This file will be merged with the structural-based TE annotation. (--anno 1 required). Default: use the EDTA library for annotation.
+
+- **--evaluate** [0|1]	Evaluate (1) classification consistency of the TE annotation. (--anno 1 required). Default: 0. This step is slow and does not affect the annotation result.
+
+- **--exclude**	[File]	Exclude bed format regions from TE annotation. Default: undef. (--anno 1 required).
+
+- **--u** [float]	Neutral mutation rate to calculate the age of intact LTR elements.
+
+----
+
+```````````````````````
+**Divide and conquer:**
+```````````````````````
+*Identify intact elements of a paticular TE type*
+
+
+- **--genome**	[File]	The genome FASTA
+
+- **--species**   [Rice|Maize|others]	Specify the species for identification of TIR candidates. Default: others
+
+- **--type**	[ltr|tir|helitron|all]	Specify which type of raw TE candidates you want to get. Default: all
+
+----
+
+```````````````
+**Benchmark**
+```````````````
+If you developed a new TE method/got a TE library and want to compare it's annotation performance to the methods we have tested, you can:
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+1. Annotate the rice genome with your test library:
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+ - **-lib** [file] custom.TE.lib.fasta
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2. Test the annotation performance of a particular TE category:
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+ - **-genome**	[file]	FASTA format genome sequence
+
+ - **-std**	[file]	RepeatMasker .out file of the standard library
+
+ - **-tst**	[file]	RepeatMasker .out file of the test library
+
+ - **-cat**	[string]	Testing TE category. Use one of LTR|nonLTR|LINE|SINE|TIR|MITE|Helitron|Total|Classified
+
+ - **-N**    [0|1]	Include Ns in total length of the genome. Defaule: 0 (not include Ns).
+
+ - **-unknown**	[0|1]	Include unknown annotations to the testing category. This should be used when the test library has no classification and you assume they all belong to the target category specified by -cat. Default: 0 (not include unknowns)
+
+----
+
+````````````
+**PAN-EDTA**
+````````````
+
+For pan-genome annotations, you need to annotate each genome with EDTA, generate a pan-genome library, then reannotate each genome with the pan-genome library.
+
+.. image:: https://github.com/HuffordLab/NAM-genomes/raw/master/te-annotation/assets/Pan-EDTA_scheme.png
+    :alt: several example circos plots
+    :width: 70%
+
+For more information see the EDTA documentation_.
+
+.. _documentation: https://github.com/oushujun/EDTA
 
 ]]></help>
 </tool>
