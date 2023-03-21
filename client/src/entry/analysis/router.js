@@ -65,6 +65,8 @@ import { ExternalIdentities } from "components/User/ExternalIdentities";
 import { HistoryExport } from "components/HistoryExport/index";
 import HistoryExportTasks from "components/History/Export/HistoryExport";
 
+import GalaxyWizard from "components/GalaxyWizard";
+
 Vue.use(VueRouter);
 
 // patches $router.push() to trigger an event and hide duplication warnings
@@ -327,6 +329,10 @@ export function getRouter(Galaxy) {
                     {
                         path: "tours",
                         component: TourList,
+                    },
+                    {
+                        path: "wizard",
+                        component: GalaxyWizard,
                     },
                     {
                         path: "tours/:tourId",
