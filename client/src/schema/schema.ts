@@ -8,6 +8,13 @@ export interface paths {
         /** Returns returns an API key for authenticated user based on BaseAuth headers. */
         get: operations["get_api_key_api_authenticate_baseauth_get"];
     };
+    "/api/chat": {
+        /**
+         * Query
+         * @description We're off to ask the wizard
+         */
+        post: operations["query_api_chat_post"];
+    };
     "/api/configuration": {
         /**
          * Return an object containing exposable configuration settings
@@ -1605,6 +1612,17 @@ export interface components {
              * @enum {string}
              */
             type: "change_dbkey";
+        };
+        /**
+         * ChatPayload
+         * @description Base model definition with common configuration used by all derived models.
+         */
+        ChatPayload: {
+            /**
+             * Message
+             * @description The message to be sent to the chat.
+             */
+            query: string;
         };
         /**
          * CheckForUpdatesResponse
@@ -7716,6 +7734,31 @@ export interface operations {
             200: {
                 content: {
                     "application/json": components["schemas"]["APIKeyResponse"];
+                };
+            };
+        };
+    };
+    query_api_chat_post: {
+        /**
+         * Query
+         * @description We're off to ask the wizard
+         */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
