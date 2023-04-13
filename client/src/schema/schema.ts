@@ -1623,6 +1623,12 @@ export interface components {
              * @description The message to be sent to the chat.
              */
             query: string;
+            /**
+             * Context
+             * @description The context identifier to be used by the chat.
+             * @enum {string}
+             */
+            context?: "username" | "tool_error";
         };
         /**
          * CheckForUpdatesResponse
