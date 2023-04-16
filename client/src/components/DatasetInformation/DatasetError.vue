@@ -53,7 +53,10 @@
                             </a>
                         </b>
                     </p>
-                    <GalaxyWizard view="error" :query="jobDetails.tool_stderr" context="tool_error" />
+                    <h4 class="mb-3 h-md">What might have happened?</h4>
+                    <b-card>
+                        <GalaxyWizard view="error" :query="jobDetails.tool_stderr" context="tool_error" />
+                    </b-card>
                     <h4 class="mb-3 h-md">Issue Report</h4>
                     <b-alert
                         v-for="(resultMessage, index) in resultMessages"
