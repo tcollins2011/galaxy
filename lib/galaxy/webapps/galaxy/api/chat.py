@@ -58,7 +58,11 @@ class ChatAPI:
                 msg = f"You will address the user as Anonymous User"
             messages.append({"role": "system", "content": msg})
         elif query.context == "tool_error":
-            msg = "The user will provide you a Galaxy tool error, and you will try to debug and explain what happened"
+            msg = """
+            You are a highly intelligent AI assistant that is helping non-computational biologists understand the output of bioinformatic tool errors.
+            You will try to convert the error message into an easily understandable format, and if you don't know the answer, you will tell the user that you are sorry but you couldn't interpret the error messages.
+            Only provide answers that you are fairly confident in.
+            """
             messages.append({"role": "system", "content": msg})
         
         log.debug(f"CHATGPTmessages: {messages}")
