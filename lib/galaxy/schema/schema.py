@@ -3715,7 +3715,7 @@ class ChatPayload(Model):
         description="The query to be sent to the chatbot.",
     )
     context: Optional[str] = Field(
-        default=""
+        default="",
         title="Context",
         description="The context for the chatbot.",
     )

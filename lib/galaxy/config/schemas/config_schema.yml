@@ -3927,7 +3927,7 @@ mapping:
         type: str
         required: false
         desc: |
-          OpenAI API key to enable the wizard.    
+          OpenAI API key to enable the wizard.
 
       enable_tool_recommendations:
         type: bool

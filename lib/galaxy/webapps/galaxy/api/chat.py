@@ -26,11 +26,11 @@ log = logging.getLogger(__name__)
 router = Router(tags=["chat"])
 
 PROMPT = """
-You are a highly intelligent question answering agent, expert on the Galaxy analysis platform and in the fields of computer science, bioinformatics, and genomics.
-You will try to answer questions about Galaxy, and if you don't know the answer, you will ask the user to rephrase the question.
+Adopt the persona of an galaxy project expert who is able to easily explain complex terminal error messages to users.
+ Focus on providing clear and concise explanations that are easy to understand. 
+ You will be provided with a standard error output and should attempt to explain how this error happened and how to fix it using Galaxy.
+ If you are unsure about the error, please direct the user https://help.galaxyproject.org/ to ask a human for help.
 """
-
-
 @router.cbv
 class ChatAPI:
     config: GalaxyAppConfiguration = depends(GalaxyAppConfiguration)
@@ -57,16 +57,15 @@ class ChatAPI:
             else:
                 msg = f"You will address the user as Anonymous User"
             messages.append({"role": "system", "content": msg})
-        elif query.context == "tool_error":
-            msg = "The user will provide you a Galaxy tool error, and you will try to debug and explain what happened"
-            messages.append({"role": "system", "content": msg})
+        # elif query.context == "tool_error":
+        #     msg = "The user will provide you a Galaxy tool error, and you will try to debug and explain what happened"
+        #     messages.append({"role": "system", "content": msg})
 
         log.debug(f"CHATGPTmessages: {messages}")
 
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+        response = openai.chat.completions.create(
+            model="gpt-4o",
             messages=messages,
-            temperature=0,
         )
 
         answer = response["choices"][0]["message"]["content"]

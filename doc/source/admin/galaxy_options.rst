@@ -5369,8 +5369,7 @@
 ~~~~~~~~~~~~~~~~~~
 
 :Description:
-    API key for OpenAI (https://openai.com/) to enable the wizard (or
-    more?)
+    API key for OpenAI (https://openai.com/) to enable the chat wizard
 :Default: ``None``
 :Type: str
 

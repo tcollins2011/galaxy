@@ -21,12 +21,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+
     "/api/chat": {
         /**
          * Query
          * @description We're off to ask the wizard
         */
-        post: operations["query_api_chat_post"];
+        post: ["query_api_chat_post"];
 };
     "/api/configuration": {
         parameters: {
