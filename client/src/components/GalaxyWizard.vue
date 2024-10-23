@@ -21,7 +21,7 @@ const props = defineProps({
 const query = ref(props.query);
 const queryResponse = ref("");
 const busy = ref(false);
-const { renderMarkdown } = useMarkdown({ openLinksInNewPage: true });
+const { renderMarkdown } = useMarkdown({ openLinksInNewPage: true, removeNewlinesAfterList: true });
 // on submit, query the server and put response in display box
 function submitQuery() {
     busy.value = true;
