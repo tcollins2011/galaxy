@@ -3,6 +3,7 @@ import axios from "axios";
 import { ref } from "vue";
 import Heading from "./Common/Heading.vue";
 import LoadingSpan from "./LoadingSpan.vue";
+import { useMarkdown } from "@/composables/markdown";
 const props = defineProps({
     view: {
         type: String,
@@ -20,6 +21,7 @@ const props = defineProps({
 const query = ref(props.query);
 const queryResponse = ref("");
 const busy = ref(false);
+const { renderMarkdown } = useMarkdown({ openLinksInNewPage: true });
 // on submit, query the server and put response in display box
 function submitQuery() {
     busy.value = true;
@@ -72,7 +74,7 @@ function submitQuery() {
                 <b-skeleton animation="wave" width="55%"></b-skeleton>
                 <b-skeleton animation="wave" width="70%"></b-skeleton>
             </div>
-            <div v-else class="chatResponse">{{ queryResponse }}</div>
+            <div v-else class="chatResponse" v-html="renderMarkdown(queryResponse)" />
         </div>
     </div>
 </template>

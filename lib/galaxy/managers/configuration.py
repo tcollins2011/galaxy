@@ -129,6 +129,7 @@ class ConfigSerializer(base.ModelSerializer):
             "logo_src_secondary": _use_config,
             "terms_url": _use_config,
             "wiki_url": _use_config,
+            "openai_api_key": _use_config,
             "screencasts_url": _use_config,
             "citation_url": _use_config,
             "citations_export_message_html": _use_config,
