@@ -7,6 +7,7 @@ import DatasetAttributes from "components/DatasetInformation/DatasetAttributes";
 import DatasetDetails from "components/DatasetInformation/DatasetDetails";
 import DatasetError from "components/DatasetInformation/DatasetError";
 import FormGeneric from "components/Form/FormGeneric";
+import GalaxyWizard from "components/GalaxyWizard.vue";
 import HelpTerm from "components/Help/HelpTerm";
 import HistoryExportTasks from "components/History/Export/HistoryExport";
 import HistoryPublished from "components/History/HistoryPublished";
@@ -613,6 +614,10 @@ export function getRouter(Galaxy) {
                         props: {
                             activeList: "published",
                         },
+                    },
+                    {
+                        path: "wizard",
+                        component: GalaxyWizard,
                     },
                     {
                         path: "workflows/create",
