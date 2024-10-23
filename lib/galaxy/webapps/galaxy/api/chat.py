@@ -67,7 +67,7 @@ class ChatAPI:
         log.debug(f"CHATGPTmessages: {messages}")
 
         response = openai.chat.completions.create(
-            model= config.openai_chat_model,
+            model=self.config.openai_chat_model,
             messages=messages,
         )
         print(response)
