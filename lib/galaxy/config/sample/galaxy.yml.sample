@@ -2884,6 +2884,9 @@ galaxy:
   # API key for OpenAI (https://openai.com/) to enable the wizard
   #openai_api_key: null
 
+  # Model for OpenAI (https://openai.com/) to enable the wizard
+  #openai_model: GPT-4o
+
   # Allow the display of tool recommendations in workflow editor and
   # after tool execution. If it is enabled and set to true, please
   # enable 'tool_recommendation_model_path' as well

@@ -5373,6 +5373,15 @@
 :Default: ``None``
 :Type: str
 
+~~~~~~~~~~~~~~~~~~
+``openai_model``
+~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Model for OpenAI (https://openai.com/) to enable the chat wizard
+:Default: ``GPT-4o``
+:Type: str
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``enable_tool_recommendations``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

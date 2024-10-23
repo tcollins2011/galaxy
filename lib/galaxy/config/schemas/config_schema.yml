@@ -3929,6 +3929,13 @@ mapping:
         desc: |
           OpenAI API key to enable the wizard.
 
+      openai_model:
+        type: str
+        default: GPT-4o
+        required: false
+        desc: |
+          OpenAI model to enable the wizard.
+
       enable_tool_recommendations:
         type: bool
         default: false
