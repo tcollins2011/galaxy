@@ -1252,7 +1252,7 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
                 try:
                     with open(chat_prompts_path, "r", encoding="utf-8") as file:
                         data = json.load(file)
-                        self.chat_prompts = data.get("prompts", {})
+                        self.openai_chat_prompts = data.get("prompts", {})
                 except json.JSONDecodeError as e:
                     log.error(f"JSON decoding error in chat prompts file: {e}")
                 except Exception as e:
