@@ -11535,6 +11535,18 @@ class CeleryUserRateLimit(Base):
             f"id={self.id!r}, last_scheduled_time={self.last_scheduled_time!r})"
         )
 
+class ChatGXYResponses(Base):
+    """
+    Stores the tool error responses from chatgxy
+    """
+
+    __tablename__ = "chatgxy_responses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job.id"), index=True)
+    response: Mapped[str] = mapped_column(TEXT, nullable=True)
+    feedback: Mapped[int] = mapped_column(Integer, nullable=True)
+
 
 # The following models (HDA, LDDA) are mapped imperatively (for details see discussion in PR #12064)
 # TLDR: there are issues ('metadata' property, Galaxy object wrapping) that need to be addressed separately
