@@ -34,6 +34,9 @@ class ChatAPI:
     @router.post("/api/chat")
     def query(self, query: ChatPayload, trans: ProvidesUserContext = DependsOnTrans) -> str:
         """We're off to ask the wizard"""
+
+        # Add logic to check if the job id is in the chatgxy_responses table, if it is return the response
+
         self._ensure_openai_configured()
 
         messages = self._build_messages(query, trans)

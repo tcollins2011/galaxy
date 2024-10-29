@@ -56,16 +56,17 @@ function submitQuery() {
     <div>
         <!-- input text, full width top of page -->
         <Heading v-if="props.view == 'wizard'" inline h2>Ask the wizard</Heading>
-        <div :class="props.view == 'wizard' && 'mt-2'">
+        <!-- <div :class="props.view == 'wizard' && 'mt-2'">
             <b-input
                 v-if="props.query == ''"
                 id="wizardinput"
                 v-model="query"
                 style="width: 100%"
                 placeholder="What's the difference in fasta and fastq files?"
-                @keyup.enter="submitQuery" />
+                @keyup.enter="submitQuery" /> -->
             <b-button
                 v-else-if="!queryResponse"
+                class="w-100"
                 variant="info"
                 :disabled="busy"
                 @click="submitQuery">

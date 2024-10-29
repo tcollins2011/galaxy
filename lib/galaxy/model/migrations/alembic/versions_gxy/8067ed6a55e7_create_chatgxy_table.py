@@ -31,6 +31,7 @@ def upgrade():
         table_name,
         Column('id', Integer, primary_key=True),
         Column('job_id', Integer, ForeignKey('job.id'), index=True),
+        Column('tool_id', Integer, ForeignKey('tool.id'), index=True),
         Column('response', Text, nullable=False),
         Column('feedback', Integer, nullable=True),
     )
