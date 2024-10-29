@@ -11543,8 +11543,8 @@ class ChatGXYResponses(Base):
     __tablename__ = "chatgxy_responses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job.id"), nullable=True)
-    response: Mapped[str] = mapped_column(TEXT, nullable=True)
+    job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job.id"), index=True)
+    response: Mapped[str] = mapped_column(TEXT, nullable=False)
     feedback: Mapped[int] = mapped_column(Integer, nullable=True)
 
 

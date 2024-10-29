@@ -42,6 +42,9 @@ class ChatAPI:
         response = self._call_openai(messages)
 
         answer = response.choices[0].message.content
+
+        # save the answer to the database under chatgxy_responses table
+
         return answer
     
     def _ensure_openai_configured(self):

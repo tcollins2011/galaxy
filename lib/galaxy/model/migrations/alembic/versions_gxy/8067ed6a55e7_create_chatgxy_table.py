@@ -30,7 +30,7 @@ def upgrade():
     create_table(
         table_name,
         Column('id', Integer, primary_key=True),
-        Column('job_id', Integer, ForeignKey('job.id'), nullable=True),
+        Column('job_id', Integer, ForeignKey('job.id'), index=True),
         Column('response', Text, nullable=False),
         Column('feedback', Integer, nullable=True),
     )
