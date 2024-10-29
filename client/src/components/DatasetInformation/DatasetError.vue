@@ -39,6 +39,9 @@ const jobDetails = ref<JobDetails>();
 const jobProblems = ref<JobInputSummary>();
 const resultMessages = ref<string[][]>([]);
 const dataset = ref<HDADetailed>();
+const feedback = ref<null | "up" | "down">(null);
+const isAiResponseReady = ref(false);
+
 
 const showForm = computed(() => {
     const noResult = !resultMessages.value.length;
@@ -155,6 +158,17 @@ onMounted(async () => {
                 >.
             </p>
 
+            <!-- Galaxy Wizard Component Integration -->
+            <h4 class="mb-3 h-md">What might have happened?</h4>
+            <p>
+                <span>
+                    We are using AI to analyze the issue and suggest possible fixes. Please be aware that its diagnosis may be inaccurate.
+                </span>
+            </p>
+            <b-card>
+                <GalaxyWizard view="error" :query="jobDetails.tool_stderr" context="tool_error" />
+            </b-card>
+
             <DatasetErrorDetails
                 :tool-stderr="jobDetails.tool_stderr"
                 :job-stderr="jobDetails.job_stderr"
@@ -188,11 +202,6 @@ onMounted(async () => {
                     </a>
                 </b>
             </p>
-            <!-- Galaxy Wizard Component Integration -->
-            <h4 class="mb-3 h-md">What might have happened?</h4>
-            <b-card>
-                <GalaxyWizard view="error" :query="jobDetails.tool_stderr" context="tool_error" />
-            </b-card>
             <h4 class="mb-3 h-md">Issue Report</h4>
 
             <BAlert v-for="(resultMessage, index) in resultMessages" :key="index" :variant="resultMessage[1]" show>
