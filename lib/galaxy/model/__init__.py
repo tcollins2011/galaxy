@@ -11535,16 +11535,16 @@ class CeleryUserRateLimit(Base):
             f"id={self.id!r}, last_scheduled_time={self.last_scheduled_time!r})"
         )
 
-class ChatGXYResponses(Base):
+
+class ChatGXYResponse(Base):
     """
-    Stores the tool error responses from chatgxy
+    Stores the tool error response from chatgxy
     """
 
-    __tablename__ = "chatgxy_responses"
+    __tablename__ = "chatgxy_response"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job.id"), index=True)
-    tool_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tool.id"), index=True)
     response: Mapped[str] = mapped_column(TEXT, nullable=False)
     feedback: Mapped[int] = mapped_column(Integer, nullable=True)
 

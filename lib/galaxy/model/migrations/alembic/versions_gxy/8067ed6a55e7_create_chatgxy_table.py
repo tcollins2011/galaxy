@@ -19,22 +19,23 @@ from galaxy.model.migrations.util import (
 )
 
 # revision identifiers, used by Alembic.
-revision = '8067ed6a55e7'
-down_revision = 'a99a5b52ccb8'
+revision = "8067ed6a55e7"
+down_revision = "a99a5b52ccb8"
 branch_labels = None
 depends_on = None
 
-table_name= "chatgxy_responses"
+table_name = "chatgxy_response"
+
 
 def upgrade():
     create_table(
         table_name,
-        Column('id', Integer, primary_key=True),
-        Column('job_id', Integer, ForeignKey('job.id'), index=True),
-        Column('tool_id', Integer, ForeignKey('tool.id'), index=True),
-        Column('response', Text, nullable=False),
-        Column('feedback', Integer, nullable=True),
+        Column("id", Integer, primary_key=True),
+        Column("job_id", Integer, ForeignKey("job.id"), index=True),
+        Column("response", Text, nullable=False),
+        Column("feedback", Integer, nullable=True),
     )
+
 
 def downgrade():
     drop_table(table_name)

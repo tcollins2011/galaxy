@@ -289,7 +289,7 @@ class ConditionalDependencies:
 
     def check_tensorflow(self):
         return asbool(self.config["enable_tool_recommendations"])
-    
+
     def check_openai(self):
         return self.config.get("openai_api_key", None) is not None
 

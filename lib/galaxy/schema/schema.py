@@ -3708,6 +3708,7 @@ class MaterializeDatasetInstanceAPIRequest(MaterializeDatasetOptions):
 class MaterializeDatasetInstanceRequest(MaterializeDatasetInstanceAPIRequest):
     history_id: DecodedDatabaseIdField
 
+
 class ChatPayload(Model):
     query: str = Field(
         ...,
@@ -3719,6 +3720,7 @@ class ChatPayload(Model):
         title="Context",
         description="The context for the chatbot.",
     )
+
 
 class CreatePagePayload(PageSummaryBase):
     content_format: PageContentFormat = ContentFormatField

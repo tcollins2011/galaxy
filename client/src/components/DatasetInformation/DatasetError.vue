@@ -2,7 +2,7 @@
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { faBug } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BAlert, BButton } from "bootstrap-vue";
+import { BAlert, BButton, BCard } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref } from "vue";
 
@@ -41,7 +41,6 @@ const resultMessages = ref<string[][]>([]);
 const dataset = ref<HDADetailed>();
 const feedback = ref<null | "up" | "down">(null);
 const isAiResponseReady = ref(false);
-
 
 const showForm = computed(() => {
     const noResult = !resultMessages.value.length;
@@ -162,12 +161,18 @@ onMounted(async () => {
             <h4 class="mb-3 h-md">What might have happened?</h4>
             <p>
                 <span>
-                    We are using AI to analyze the issue and suggest possible fixes. Please be aware that its diagnosis may be inaccurate.
+                    We are using AI to analyze the issue and suggest possible fixes. Please be aware that its diagnosis
+                    may be inaccurate.
                 </span>
             </p>
-            <b-card>
-                <GalaxyWizard view="error" :query="jobDetails.tool_stderr" context="tool_error" />
-            </b-card>
+            <!-- TODO: Handle case where there is no tool_stderr -->
+            <BCard class="mb-2">
+                <GalaxyWizard
+                    view="error"
+                    :query="jobDetails.tool_stderr"
+                    context="tool_error"
+                    :job-id="jobDetails.id" />
+            </BCard>
 
             <DatasetErrorDetails
                 :tool-stderr="jobDetails.tool_stderr"
