@@ -3278,16 +3278,11 @@ class LibraryFolderMetadata(Model):
     can_add_library_item: bool
     full_path: List[Tuple[EncodedLibraryFolderDatabaseIdField, str]]
     readme_raw: Optional[str] = None
-    readme_rendered: Optional[str] = None
 
-# class ExtendedLibraryFolderMetadata(LibraryFolderMetadata):
-#     readme_raw: Optional[str] = None
-#     readme_rendered: Optional[str] = None
 class LibraryFolderContentsIndexResult(Model):
     metadata: LibraryFolderMetadata
     folder_contents: List[AnyLibraryFolderItem]
-
-
+    
 class CreateLibraryFilePayload(Model):
     from_hda_id: Optional[DecodedDatabaseIdField] = Field(
         default=None,
