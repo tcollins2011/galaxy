@@ -3277,12 +3277,14 @@ class LibraryFolderMetadata(Model):
     can_modify_folder: bool
     can_add_library_item: bool
     full_path: List[Tuple[EncodedLibraryFolderDatabaseIdField, str]]
-
-class ExtendedLibraryFolderMetadata(LibraryFolderMetadata):
     readme_raw: Optional[str] = None
     readme_rendered: Optional[str] = None
+
+# class ExtendedLibraryFolderMetadata(LibraryFolderMetadata):
+#     readme_raw: Optional[str] = None
+#     readme_rendered: Optional[str] = None
 class LibraryFolderContentsIndexResult(Model):
-    metadata: Union[LibraryFolderMetadata, ExtendedLibraryFolderMetadata]
+    metadata: LibraryFolderMetadata
     folder_contents: List[AnyLibraryFolderItem]
 
 
