@@ -1,4 +1,4 @@
-"""Evaluate Router agent's ability to route queries appropriately."""
+"""Evaluate Router agent's ability to route queries to appropriate agents."""
 import json
 import os
 import time

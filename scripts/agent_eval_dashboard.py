@@ -673,7 +673,7 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
     rubric = html.escape(test.get("rubric", ""))
     min_score = test.get("min_score_threshold", 0.7)
 
-    html = f"""
+    out = f"""
                                 <!-- Level 2: Agent + Judge Overview (Side by Side) -->
                                 <div class="two-column-layout">
 
@@ -718,7 +718,7 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
         score_class = get_score_class(quality_score)
         status_text = "PASSED" if quality_score >= min_score else "FAILED"
 
-        html += f"""
+        out += f"""
                                         <div class="metrics-grid">
                                             <div class="metric">
                                                 <label>Model:</label>
@@ -755,10 +755,10 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
                                             <pre>{rubric}</pre>
                                         </div>"""
     else:
-        html += """
+        out += """
                                         <p style="color: #718096; font-style: italic;">No judge evaluation available for this test.</p>"""
 
-    html += """
+    out += """
                                     </div>
 
                                 </div>
@@ -774,11 +774,11 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
                                     Show Raw JSON
                                 </button>
                                 <div id=\"""" + test_id + """-advanced" class="collapsible-content">
-                                    <pre>""" + json.dumps(test, indent=2) + """</pre>
+                                    <pre>""" + html.escape(json.dumps(test, indent=2)) + """</pre>
                                 </div>
 """
 
-    return html
+    return out
 
 
 def generate_index_html(base_dir: Path) -> str:

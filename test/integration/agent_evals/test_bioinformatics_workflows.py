@@ -189,7 +189,7 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
             response=response,
             rubric=(
                 "Response should mention:\n"
-                "1. Taxonomic profiling (Kraken2, MetaPhlAn, Kaiju for quick abundance estimates)\n"
+                "1. Taxonomic profiling (Kraken2, MetaPhlAn, Kaiju, or Sylph for quick abundance estimates)\n"
                 "2. Assembly-based approach (MEGAHIT, metaSPAdes for contigs)\n"
                 "3. Binning (MaxBin, MetaBAT to group contigs into MAGs)\n"
                 "4. Annotation of bins (CheckM for quality, prokka/DRAM for genes)\n"
@@ -368,27 +368,13 @@ Provide a score from 0.0 to 1.0, where:
 Respond with ONLY a JSON object: {{"score": 0.X, "reasoning": "brief explanation"}}"""
 
         start_time = time.time()
+        message = client.messages.create(
+            model=judge_model, max_tokens=500, messages=[{"role": "user", "content": judge_prompt}]
+        )
+        judge_duration = time.time() - start_time
 
-        try:
-            message = client.messages.create(
-                model=judge_model, max_tokens=500, messages=[{"role": "user", "content": judge_prompt}]
-            )
-            judge_duration = time.time() - start_time
-
-            # Parse judge response
-            judge_result = json.loads(message.content[0].text)
-            score = float(judge_result["score"])
-
-        except RateLimitError as e:
-            pytest.skip(f"Judge API rate limited - test inconclusive: {e}")
-        except APITimeoutError as e:
-            pytest.skip(f"Judge API timeout - test inconclusive: {e}")
-        except (APIError, json.JSONDecodeError, KeyError, ValueError) as e:
-            # These are test failures, not skips
-            pytest.fail(f"Judge API error or invalid response: {e}")
-        except Exception as e:
-            # Unexpected error - fail the test
-            pytest.fail(f"Unexpected error during judge evaluation: {e}")
+        judge_result = json.loads(message.content[0].text)
+        score = float(judge_result["score"])
 
         # Store judge metrics
         self._test_metrics["judge_duration_ms"] = int(judge_duration * 1000)
@@ -502,10 +488,4 @@ Respond with ONLY a JSON object: {{"score": 0.X, "reasoning": "brief explanation
                 error_msg = f"Quality score {quality_score} below threshold {min_score}"
 
         self._save_test_report(test_name, status, error_msg)
-
-        # Clean up Anthropic client to prevent resource leaks
-        if hasattr(self, '_judge_client') and self._judge_client is not None:
-            del self._judge_client
-            self._judge_client = None
-
         super().tearDown()
