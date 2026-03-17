@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Eval Dashboard - {{ run_id }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 { margin: 0 0 10px 0; font-size: 32px; }
+        .header .subtitle { opacity: 0.9; margin: 5px 0; }
+        .header .run-info {
+            display: flex;
+            gap: 30px;
+            margin-top: 15px;
+            font-size: 14px;
+            opacity: 0.95;
+        }
+        .header .run-info-item { display: flex; align-items: center; gap: 8px; }
+        .header .run-info-label { opacity: 0.8; }
+
+        /* Summary Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        .stat h3 { margin: 0 0 10px 0; color: #718096; font-size: 14px; font-weight: 500; }
+        .stat .value { font-size: 36px; font-weight: bold; color: #2d3748; }
+        .stat .subvalue { font-size: 14px; color: #718096; margin-top: 5px; }
+        .passed { color: #48bb78; }
+        .failed { color: #f56565; }
+
+        /* Category Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 30px 0 20px 0;
+            border-bottom: 2px solid #e2e8f0;
+            overflow-x: auto;
+        }
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            color: #718096;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .tab-button:hover { color: #4a5568; background: #f7fafc; }
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Table */
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 14px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #f7fafc;
+            color: #2d3748;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover { background: #edf2f7; }
+        tbody tr { cursor: pointer; }
+        tbody tr:hover td { background: #f7fafc; }
+
+        /* Status & Score Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-passed { background: #c6f6d5; color: #22543d; }
+        .status-failed { background: #fed7d7; color: #742a2a; }
+
+        .score-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .score-high { background: #c6f6d5; color: #22543d; }
+        .score-medium { background: #feebc8; color: #744210; }
+        .score-low { background: #fed7d7; color: #742a2a; }
+
+        /* Expandable Details */
+        .expand-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .expand-btn:hover { background: #5a67d8; }
+
+        .details-row { display: none; }
+        .details-row.show { display: table-row; }
+
+        .details-container {
+            padding: 20px;
+            background: #f7fafc;
+            border-top: 3px solid #e2e8f0;
+        }
+
+        /* Two-Column Layout for Agent/Judge */
+        .two-column-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        /* Agent Section (Blue) */
+        .agent-section {
+            background: #ebf8ff;
+            border-left: 4px solid #4299e1;
+            padding: 20px;
+            border-radius: 6px;
+        }
+        .agent-section h3 {
+            margin: 0 0 15px 0;
+            color: #2c5282;
+            font-size: 16px;
+        }
+
+        /* Judge Section (Yellow) */
+        .judge-section {
+            background: #fefcbf;
+            border-left: 4px solid #ecc94b;
+            padding: 20px;
+            border-radius: 6px;
+        }
+        .judge-section h3 {
+            margin: 0 0 15px 0;
+            color: #744210;
+            font-size: 16px;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .metric label {
+            color: #718096;
+            font-weight: 500;
+        }
+        .metric span {
+            color: #2d3748;
+            font-weight: 600;
+        }
+
+        /* Toggle Buttons */
+        .toggle-btn {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            margin: 10px 0;
+            transition: background 0.2s;
+        }
+        .toggle-btn:hover { background: #3182ce; }
+
+        .judge-toggle-btn {
+            background: #ecc94b;
+            color: #744210;
+        }
+        .judge-toggle-btn:hover { background: #d69e2e; }
+
+        .secondary-toggle {
+            background: #a0aec0;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .secondary-toggle:hover { background: #718096; }
+
+        /* Collapsible Content */
+        .collapsible-content {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #e2e8f0;
+        }
+        .collapsible-content.show { display: block; }
+
+        /* Prompt Section */
+        .prompt-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #9f7aea;
+        }
+        .prompt-section h3 {
+            margin: 0 0 10px 0;
+            color: #553c9a;
+            font-size: 16px;
+        }
+        .prompt-text {
+            color: #2d3748;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        /* Response/Reasoning Text */
+        .response-text, .reasoning-text {
+            color: #2d3748;
+            line-height: 1.7;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        /* Markdown-rendered content styling */
+        .markdown-content {
+            white-space: normal;
+        }
+        .markdown-content p {
+            margin: 0 0 10px 0;
+        }
+        .markdown-content p:last-child {
+            margin-bottom: 0;
+        }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            margin: 15px 0 10px 0;
+            font-weight: 600;
+        }
+        .markdown-content h1 { font-size: 20px; }
+        .markdown-content h2 { font-size: 18px; }
+        .markdown-content h3 { font-size: 16px; }
+        .markdown-content ul, .markdown-content ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+        .markdown-content li {
+            margin: 5px 0;
+        }
+        .markdown-content code {
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .markdown-content pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #cbd5e0;
+            padding-left: 15px;
+            margin: 10px 0;
+            color: #4a5568;
+            font-style: italic;
+        }
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+        }
+        .markdown-content table th,
+        .markdown-content table td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: left;
+        }
+        .markdown-content table th {
+            background: #f7fafc;
+            font-weight: 600;
+        }
+        .markdown-content a {
+            color: #4299e1;
+            text-decoration: none;
+        }
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Pre/Code */
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* Utilities */
+        .no-data {
+            padding: 40px;
+            text-align: center;
+            color: #718096;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Agent Evaluation Dashboard</h1>
+        <div class="subtitle">Run: {{ run_id }}</div>
+        <div class="run-info">
+            <div class="run-info-item">
+                <span class="run-info-label">Agent Model:</span>
+                <strong>{{ agent_model }}</strong>
+            </div>
+            <div class="run-info-item">
+                <span class="run-info-label">Judge Model:</span>
+                <strong>{{ judge_model }}</strong>
+            </div>
+            <div class="run-info-item">
+                <span class="run-info-label">Date:</span>
+                <strong>{{ timestamp_str }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat">
+            <h3>Total Tests</h3>
+            <div class="value">{{ stats.total }}</div>
+        </div>
+        <div class="stat">
+            <h3>Passed</h3>
+            <div class="value passed">{{ stats.passed }}</div>
+            <div class="subvalue">{{ "%.1f"|format(stats.pass_rate * 100) }}% pass rate</div>
+        </div>
+        <div class="stat">
+            <h3>Failed</h3>
+            <div class="value failed">{{ stats.failed }}</div>
+        </div>
+        <div class="stat">
+            <h3>Total Cost</h3>
+            <div class="value">${{ "%.4f"|format(stats.total_cost) }}</div>
+        </div>
+        {% if stats.avg_quality_score is not none %}
+        <div class="stat">
+            <h3>Avg Quality Score</h3>
+            <div class="value">{{ "%.3f"|format(stats.avg_quality_score) }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="tabs">
+        {% for category in categories %}
+        <button class="tab-button{% if loop.first %} active{% endif %}" onclick="switchTab('{{ category.name }}')">
+            {{ category.display_name }} ({{ category.test_count }})
+        </button>
+        {% endfor %}
+    </div>
+
+    {% for category in categories %}
+    <div id="tab-{{ category.name }}" class="tab-content{% if loop.first %} active{% endif %}">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        {% if category.has_scores %}
+                        <th onclick="sortTable('{{ category.name }}', 0)">Score</th>
+                        {% endif %}
+                        <th onclick="sortTable('{{ category.name }}', 1)">Test Name</th>
+                        <th onclick="sortTable('{{ category.name }}', 2)">Status</th>
+                        <th onclick="sortTable('{{ category.name }}', 3)">Duration</th>
+                        <th onclick="sortTable('{{ category.name }}', 4)">Cost</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for test in category.tests %}
+                    <tr onclick="toggleDetails('{{ test.test_id }}', event)">
+                        {% if category.has_scores %}
+                        <td>
+                            {% if test.quality_score is not none %}
+                            <span class="score-badge {{ test.score_class }}">{{ "%.2f"|format(test.quality_score) }}</span>
+                            {% else %}
+                            <span style="color: #a0aec0;">N/A</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td>{{ test.name }}</td>
+                        <td>
+                            <span class="status-badge status-{{ test.status|lower }}">{{ test.status }}</span>
+                        </td>
+                        <td>{{ "%.1f"|format(test.duration_s) }}s</td>
+                        <td>${{ "%.4f"|format(test.cost) }}</td>
+                        <td>
+                            <button class="expand-btn" onclick="event.stopPropagation(); toggleDetails('{{ test.test_id }}', event)">
+                                Expand
+                            </button>
+                        </td>
+                    </tr>
+                    <tr id="{{ test.test_id }}-details" class="details-row">
+                        <td colspan="{% if category.has_scores %}6{% else %}5{% endif %}">
+                            <div class="details-container">
+                                {{ test.details_html|safe }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    <script>
+        function switchTab(tabName) {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Deactivate all buttons
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            // Show selected tab
+            document.getElementById('tab-' + tabName).classList.add('active');
+
+            // Activate selected button
+            event.target.classList.add('active');
+        }
+
+        function toggleDetails(testId, event) {
+            const detailsRow = document.getElementById(testId + '-details');
+            const row = event.currentTarget;
+            const btn = row.querySelector('.expand-btn');
+
+            if (detailsRow.classList.contains('show')) {
+                detailsRow.classList.remove('show');
+                if (btn) btn.textContent = 'Expand';
+            } else {
+                detailsRow.classList.add('show');
+                if (btn) btn.textContent = 'Collapse';
+            }
+        }
+
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            const btn = event.target;
+
+            if (section.classList.contains('show')) {
+                section.classList.remove('show');
+                btn.textContent = btn.textContent.replace('Hide', 'Show');
+            } else {
+                section.classList.add('show');
+                btn.textContent = btn.textContent.replace('Show', 'Hide');
+            }
+        }
+
+        function sortTable(category, colIndex) {
+            // Table sorting implementation would go here
+            console.log('Sort table', category, 'by column', colIndex);
+        }
+    </script>
+</body>
+</html>
