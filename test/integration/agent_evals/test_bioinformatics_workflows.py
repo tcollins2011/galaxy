@@ -11,25 +11,30 @@ real-world bioinformatics use cases:
 - General onboarding guidance
 - Coverage anomalies and artifacts
 
-Uses mcp-eval's evaluation framework with LLM judges to assess response quality.
+Uses LLM-as-judge (Claude Opus 4.6) to assess response quality against rubrics.
 """
 import json
 import os
 import time
-from pathlib import Path
 
 import pytest
 
+from anthropic import (
+    Anthropic,
+    APIError,
+    APITimeoutError,
+    RateLimitError,
+)
 from galaxy_test.base.populators import DatasetPopulator
-from galaxy_test.driver.integration_util import IntegrationTestCase
-from .eval_utils import calculate_model_cost
+
+from .base import AgentEvalTestCase
 
 
 # Requires live LLM for evaluation
 pytestmark = pytest.mark.requires_llm
 
 
-class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
+class TestBioinformaticsWorkflowEvals(AgentEvalTestCase):
     """Evaluate agent responses for bioinformatics workflows."""
 
     dataset_populator: DatasetPopulator
@@ -37,25 +42,6 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
     def setUp(self):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
-        self._test_start_time = time.time()
-        self._test_metrics = {}
-        # Capture test metadata for categorization
-        # (test name is injected by conftest.py fixture)
-        self._test_category = self.__class__.__module__.split('.')[-1].replace('test_', '')
-        self._test_class = self.__class__.__name__
-
-    @classmethod
-    def handle_galaxy_config_kwds(cls, config):
-        """Configure Galaxy with AI agent settings."""
-        # Use useGalaxy.org tools for realistic tool recommendations in evaluation tests
-        config["agent_eval_tool_source_url"] = "https://usegalaxy.org"
-
-        # Set AI model (from env var or default to Claude Haiku 4.5)
-        config["ai_model"] = os.environ.get("GALAXY_TEST_AI_MODEL", "anthropic:claude-haiku-4-5")
-
-        # Set AI API key if provided
-        if ai_api_key := os.environ.get("GALAXY_TEST_AI_API_KEY"):
-            config["ai_api_key"] = ai_api_key
 
     @pytest.mark.asyncio
     async def test_scrna_cell_type_identification(self):
@@ -70,7 +56,6 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
 
         response = await self._query_router(prompt)
 
-        # Evaluation using LLM judge
         quality_score = await self._evaluate_response(
             response=response,
             rubric=(
@@ -289,26 +274,43 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
 
         assert quality_score >= 0.7, f"Response quality too low: {quality_score}"
 
-    # Helper methods
+    # ── Helper methods ────────────────────────────────────────────────────────
 
     async def _query_router(self, prompt: str) -> str:
-        """Send prompt to Router agent and return response."""
+        """Send prompt to Router agent and return response content."""
         start_time = time.time()
         response = self._post(
-            "/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True  # Start with router
+            "/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True
         )
+        # Retry once on 500 — often caused by transient Anthropic API rate limits
+        if response.status_code == 500:
+            time.sleep(5)
+            response = self._post(
+                "/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True
+            )
         query_duration = time.time() - start_time
 
         self._assert_status_code_is(response, 200)
         result = response.json()
 
-        # Store metrics for reporting
         self._test_metrics["query_duration_ms"] = int(query_duration * 1000)
         self._test_metrics["prompt"] = prompt
         self._test_metrics["agent_response"] = result["response"]["content"]
         self._test_metrics["agent_type"] = result["response"].get("agent_type", "router")
 
-        # Extract token usage from API response if available
+        # Capture orchestrator/router planning metadata if present
+        agent_resp = result.get("response", {})
+        if isinstance(agent_resp, dict):
+            metadata = agent_resp.get("metadata", {})
+            if metadata.get("agents_used"):
+                self._test_metrics["orchestrator_agents_used"] = metadata["agents_used"]
+                self._test_metrics["orchestrator_execution_type"] = metadata.get("execution_type", "unknown")
+            if metadata.get("method"):
+                self._test_metrics["routing_method"] = metadata["method"]
+            handoff = metadata.get("handoff_info", {})
+            if handoff:
+                self._test_metrics["handoff_info"] = handoff
+
         if "usage" in result:
             self._test_metrics["agent_tokens_input"] = result["usage"].get("input_tokens", 0)
             self._test_metrics["agent_tokens_output"] = result["usage"].get("output_tokens", 0)
@@ -316,12 +318,11 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
         return result["response"]["content"]
 
     async def _evaluate_response(self, response: str, rubric: str, min_score: float) -> float:
-        """Evaluate response quality using LLM judge.
+        """Evaluate response quality using LLM judge (Claude Opus 4.6).
 
-        This uses Claude Sonnet 4.0 as a judge to assess response quality.
         Returns a score between 0.0 and 1.0.
+        Skips the test (instead of failing) on rate limits or timeouts.
         """
-        # Try to get judge API key from Galaxy config, then environment, then fall back to ai_api_key
         judge_api_key = (
             getattr(self._app.config, "agent_eval_judge_api_key", None)
             or os.environ.get("ANTHROPIC_API_KEY")
@@ -333,21 +334,9 @@ class TestBioinformaticsWorkflowEvals(IntegrationTestCase):
                 "in galaxy.yml or ANTHROPIC_API_KEY environment variable"
             )
 
-        # Use anthropic SDK to call Claude Sonnet 4.0 as judge
-        from anthropic import (
-            Anthropic,
-            APIError,
-            APITimeoutError,
-            RateLimitError,
-        )
-
-        # Reuse client if already created, otherwise create new one
-        if not hasattr(self, '_judge_client') or self._judge_client is None:
+        if not hasattr(self, "_judge_client") or self._judge_client is None:
             self._judge_client = Anthropic(api_key=judge_api_key)
 
-        client = self._judge_client
-
-        # Get judge model from config or use default
         judge_model = getattr(self._app.config, "agent_eval_judge_model", None) or "claude-opus-4-6"
 
         judge_prompt = f"""You are an expert evaluator of AI agent responses for bioinformatics workflows.
@@ -368,15 +357,27 @@ Provide a score from 0.0 to 1.0, where:
 Respond with ONLY a JSON object: {{"score": 0.X, "reasoning": "brief explanation"}}"""
 
         start_time = time.time()
-        message = client.messages.create(
-            model=judge_model, max_tokens=500, messages=[{"role": "user", "content": judge_prompt}]
-        )
+        try:
+            message = self._judge_client.messages.create(
+                model=judge_model,
+                max_tokens=500,
+                messages=[{"role": "user", "content": judge_prompt}],
+            )
+        except RateLimitError as e:
+            pytest.skip(f"Judge API rate limited — test inconclusive: {e}")
+        except APITimeoutError as e:
+            pytest.skip(f"Judge API timeout — test inconclusive: {e}")
+        except APIError as e:
+            pytest.fail(f"Judge API error: {e}")
+
         judge_duration = time.time() - start_time
 
-        judge_result = json.loads(message.content[0].text)
-        score = float(judge_result["score"])
+        try:
+            judge_result = json.loads(message.content[0].text)
+            score = float(judge_result["score"])
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            pytest.fail(f"Judge returned invalid response: {e}\nRaw: {message.content[0].text}")
 
-        # Store judge metrics
         self._test_metrics["judge_duration_ms"] = int(judge_duration * 1000)
         self._test_metrics["judge_model"] = judge_model
         self._test_metrics["quality_score"] = score
@@ -384,108 +385,15 @@ Respond with ONLY a JSON object: {{"score": 0.X, "reasoning": "brief explanation
         self._test_metrics["rubric"] = rubric
         self._test_metrics["min_score"] = min_score
 
-        # Store token usage if available
         if hasattr(message, "usage"):
             self._test_metrics["judge_tokens_input"] = message.usage.input_tokens
             self._test_metrics["judge_tokens_output"] = message.usage.output_tokens
 
         return score
 
-    def _save_test_report(self, test_name: str, status: str, error_message: str = None):
-        """Save test results as JSON report for dashboard."""
-        reports_dir = Path("test-reports")
-        reports_dir.mkdir(exist_ok=True)
-
-        # Calculate total duration
-        duration_ms = 0
-        if self._test_start_time:
-            duration_ms = int((time.time() - self._test_start_time) * 1000)
-
-        # Extract token counts (agent tokens come from API response, judge tokens from evaluation)
-        agent_tokens_in = self._test_metrics.get('agent_tokens_input', 0)
-        agent_tokens_out = self._test_metrics.get('agent_tokens_output', 0)
-        judge_tokens_in = self._test_metrics.get('judge_tokens_input', 0)
-        judge_tokens_out = self._test_metrics.get('judge_tokens_output', 0)
-
-        # Get model names for cost calculation
-        agent_model = getattr(self._app.config, 'ai_model', 'claude-sonnet-4-5')
-        judge_model = self._test_metrics.get('judge_model', 'claude-opus-4-6')
-
-        # Calculate costs using pricing utility
-        agent_cost = calculate_model_cost(agent_model, agent_tokens_in, agent_tokens_out)
-        judge_cost = calculate_model_cost(judge_model, judge_tokens_in, judge_tokens_out)
-        total_cost = agent_cost + judge_cost
-
-        # Build report with both legacy fields (for dashboard compatibility) and detailed metrics
-        report = {
-            # Test identity
-            "test_name": test_name,
-            "test_class": getattr(self, '_test_class', 'Unknown'),
-            "test_category": getattr(self, '_test_category', 'unknown'),
-            "test_file": "test_bioinformatics_workflows.py",
-            # Run context
-            "run_id": getattr(self, '_agent_eval_run_id', 'unknown'),
-            "agent_model": agent_model,
-            "judge_model": judge_model,
-            "tool_source_url": getattr(self._app.config, 'agent_eval_tool_source_url', None),
-            # Test execution
-            "status": status,
-            "duration_ms": duration_ms,
-            "timestamp": time.time(),
-            # Legacy fields for current dashboard compatibility
-            "tokens_input": agent_tokens_in + judge_tokens_in,
-            "tokens_output": agent_tokens_out + judge_tokens_out,
-            "cost": total_cost,
-            **self._test_metrics
-        }
-
-        if error_message:
-            report["error"] = error_message
-
-        # Add detailed metrics breakdown
-        report["detailed_metrics"] = {
-            "agent_tokens": {"input": agent_tokens_in, "output": agent_tokens_out},
-            "judge_tokens": {"input": judge_tokens_in, "output": judge_tokens_out},
-            "costs": {
-                "agent_cost": agent_cost,
-                "judge_cost": judge_cost,
-                "total_cost": total_cost
-            }
-        }
-
-        # Save to legacy location (test-reports/) for backward compatibility
-        report_file = reports_dir / f"{test_name}.json"
-        with open(report_file, "w") as f:
-            json.dump(report, f, indent=2)
-
-        # Save to versioned storage using ReportManager
-        if hasattr(self, '_report_manager'):
-            category = report.get('test_category', 'unknown')
-            self._report_manager.save_report(category, test_name, report)
-
     def tearDown(self):
-        """Save test report after each test."""
-        test_name = getattr(self, '_current_test_name', 'unknown_test')
-
-        status = "PASSED"
-        error_msg = None
-
-        if hasattr(self, "_outcome"):
-            result = self._outcome.result
-            if result.failures or result.errors:
-                status = "FAILED"
-                if result.failures:
-                    error_msg = str(result.failures[-1][1])
-                elif result.errors:
-                    error_msg = str(result.errors[-1][1])
-
-        # Also check quality score if available
-        if status == "PASSED" and "quality_score" in self._test_metrics and "min_score" in self._test_metrics:
-            quality_score = self._test_metrics["quality_score"]
-            min_score = self._test_metrics["min_score"]
-            if quality_score < min_score:
-                status = "FAILED"
-                error_msg = f"Quality score {quality_score} below threshold {min_score}"
-
-        self._save_test_report(test_name, status, error_msg)
+        """Clean up judge client before base tearDown saves the report."""
+        if hasattr(self, "_judge_client") and self._judge_client is not None:
+            del self._judge_client
+            self._judge_client = None
         super().tearDown()

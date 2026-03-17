@@ -117,8 +117,7 @@ agent-eval-setup: setup-venv ## Setup agent evaluation environment
 agent-eval: ## Run agent evaluation tests (requires live LLM)
 	@echo "Running agent evaluation tests..."
 	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
-		echo "Error: ANTHROPIC_API_KEY not set (needed for judge)"; \
-		exit 1; \
+		echo "Warning: ANTHROPIC_API_KEY not set, using agent_eval_judge_api_key from galaxy.yml"; \
 	fi
 	@if [ -z "$$GALAXY_TEST_AI_API_KEY" ]; then \
 		echo "Warning: GALAXY_TEST_AI_API_KEY not set, using galaxy.yml config"; \
@@ -138,6 +137,14 @@ agent-eval-dashboard: ## Regenerate dashboard from latest test reports (auto-run
 	$(IN_VENV) python scripts/agent_eval_dashboard.py
 	@echo "Dashboard generated from latest run"
 	@echo "   See output above for file location"
+
+agent-eval-multi: ## Run evals against multiple models (set agent_eval_models in galaxy.yml or GALAXY_TEST_AI_MODELS env var)
+	@echo "Running multi-model agent evaluations..."
+	@if [ -z "$$ANTHROPIC_API_KEY" ]; then \
+		echo "Warning: ANTHROPIC_API_KEY not set, using agent_eval_judge_api_key from galaxy.yml"; \
+	fi
+	@mkdir -p test-reports database/agent_eval_reports/runs
+	$(IN_VENV) GALAXY_TEST_ENABLE_LIVE_LLM=1 python scripts/run_multi_model_eval.py
 
 agent-eval-clean: ## Clean agent evaluation test reports
 	rm -rf test-reports/ database/agent_eval_reports/

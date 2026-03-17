@@ -632,8 +632,39 @@ def generate_html(run_dir: Path, metadata: dict[str, Any], results_by_category: 
         }
 
         function sortTable(category, colIndex) {
-            // Table sorting implementation would go here
-            console.log('Sort table', category, 'by column', colIndex);
+            const tabDiv = document.getElementById('tab-' + category);
+            if (!tabDiv) return;
+            const tbody = tabDiv.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr:not(.details-row)'));
+
+            let ascending = tbody.dataset.sortCol === String(colIndex) && tbody.dataset.sortDir === 'asc';
+            tbody.dataset.sortCol = colIndex;
+            tbody.dataset.sortDir = ascending ? 'desc' : 'asc';
+
+            rows.sort((a, b) => {
+                const aCell = a.querySelectorAll('td')[colIndex];
+                const bCell = b.querySelectorAll('td')[colIndex];
+                if (!aCell || !bCell) return 0;
+                const aText = aCell.textContent.trim().replace(/[$,%s]/g, '');
+                const bText = bCell.textContent.trim().replace(/[$,%s]/g, '');
+                const aNum = parseFloat(aText);
+                const bNum = parseFloat(bText);
+                const cmp = isNaN(aNum) || isNaN(bNum)
+                    ? aText.localeCompare(bText)
+                    : aNum - bNum;
+                return ascending ? -cmp : cmp;
+            });
+
+            // Re-append rows, keeping detail rows after their parent
+            rows.forEach(row => {
+                tbody.appendChild(row);
+                const detailId = row.querySelector('.expand-btn')
+                    ?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+                if (detailId) {
+                    const detail = document.getElementById(detailId + '-details');
+                    if (detail) tbody.appendChild(detail);
+                }
+            });
         }
     </script>
 </body>
@@ -641,6 +672,33 @@ def generate_html(run_dir: Path, metadata: dict[str, Any], results_by_category: 
 """
 
     return html
+
+
+def _render_routing_detail(test_id: str, handoff_info: dict, orchestrator_agents: list, orchestrator_exec_type: str) -> str:
+    """Render routing/orchestrator planning detail block if data is present."""
+    if not handoff_info and not orchestrator_agents:
+        return ""
+
+    lines = []
+    if handoff_info:
+        src = html.escape(handoff_info.get("source_agent", ""))
+        tgt = html.escape(handoff_info.get("target_agent", ""))
+        if src and tgt:
+            lines.append(f"<strong>Handoff:</strong> {src} → {tgt}")
+
+    if orchestrator_agents:
+        agents_str = html.escape(", ".join(orchestrator_agents))
+        exec_label = f" ({html.escape(orchestrator_exec_type)})" if orchestrator_exec_type else ""
+        lines.append(f"<strong>Orchestrator plan{exec_label}:</strong> [{agents_str}]")
+
+    if not lines:
+        return ""
+
+    body = "<br>".join(lines)
+    return f"""
+                                        <div style="margin: 8px 0; padding: 8px 12px; background: #ebf8ff; border-left: 3px solid #3182ce; border-radius: 3px; font-size: 13px;">
+                                            {body}
+                                        </div>"""
 
 
 def generate_test_details(test: dict[str, Any], test_id: str) -> str:
@@ -652,6 +710,14 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
     # Extract data and escape for HTML safety
     prompt = html.escape(test.get("prompt", ""))
     agent_response = html.escape(test.get("agent_response", ""))
+
+    # Routing / orchestrator planning metadata
+    expected_agent = test.get("expected_agent", "")
+    actual_agent_type = test.get("agent_type", "")
+    routing_method = test.get("routing_method", "")
+    handoff_info = test.get("handoff_info", {})
+    orchestrator_agents = test.get("orchestrator_agents_used", [])
+    orchestrator_exec_type = test.get("orchestrator_execution_type", "")
 
     # Agent metrics
     agent_tokens = test.get("detailed_metrics", {}).get("agent_tokens", {})
@@ -697,7 +763,15 @@ def generate_test_details(test: dict[str, Any], test_id: str) -> str:
                                                 <label>Duration:</label>
                                                 <span>{query_duration_s:.1f}s</span>
                                             </div>
+                                            <div class="metric">
+                                                <label>Routed to:</label>
+                                                <span>{html.escape(actual_agent_type) if actual_agent_type else "—"}</span>
+                                            </div>
+                                            {f'<div class="metric"><label>Expected:</label><span>{html.escape(expected_agent)}</span></div>' if expected_agent else ""}
+                                            {f'<div class="metric"><label>Method:</label><span>{html.escape(routing_method)}</span></div>' if routing_method else ""}
                                         </div>
+
+                                        {_render_routing_detail(test_id, handoff_info, orchestrator_agents, orchestrator_exec_type)}
 
                                         <button class="toggle-btn" onclick="toggleSection('{test_id}-agent-full')">
                                             Show Full Response
@@ -788,8 +862,9 @@ def generate_index_html(base_dir: Path) -> str:
     if not runs_dir.exists():
         return generate_empty_index()
 
-    # Collect all run metadata
+    # Collect all run metadata + summaries
     runs = []
+    embedded_run_data: dict[str, Any] = {}  # run_id -> {metadata, summary} for JS embedding
     for run_dir in sorted(runs_dir.iterdir(), reverse=True):
         if not run_dir.is_dir():
             continue
@@ -804,13 +879,14 @@ def generate_index_html(base_dir: Path) -> str:
             metadata = json.load(f)
 
         # Load summary if available
-        summary = {}
+        summary: dict[str, Any] = {}
         if summary_file.exists():
             with open(summary_file) as f:
                 summary = json.load(f)
 
+        run_id = metadata.get("run_id", run_dir.name)
         run_info = {
-            "run_id": metadata.get("run_id", run_dir.name),
+            "run_id": run_id,
             "timestamp": metadata.get("timestamp", 0),
             "timestamp_str": metadata.get("timestamp_str", "Unknown"),
             "agent_model": metadata.get("agent_model", "unknown"),
@@ -824,6 +900,8 @@ def generate_index_html(base_dir: Path) -> str:
             })
         }
         runs.append(run_info)
+        # Embed full metadata + summary for client-side comparison (avoids fetch() on file://)
+        embedded_run_data[run_id] = {"metadata": metadata, "summary": summary}
 
     # Generate HTML
     html = """<!DOCTYPE html>
@@ -1081,9 +1159,11 @@ def generate_index_html(base_dir: Path) -> str:
             >
             <select id="model-filter" class="filter-select" onchange="filterRuns()">
                 <option value="">All Models</option>
-                <option value="haiku">Haiku</option>
-                <option value="sonnet">Sonnet</option>
-                <option value="opus">Opus</option>
+                <option value="haiku">Claude Haiku</option>
+                <option value="sonnet">Claude Sonnet</option>
+                <option value="opus">Claude Opus</option>
+                <option value="gpt">GPT (OpenAI)</option>
+                <option value="gemini">Gemini (Google)</option>
             </select>
             <select id="sort-select" class="filter-select" onchange="sortRuns()">
                 <option value="date-desc">Newest First</option>
@@ -1188,6 +1268,9 @@ def generate_index_html(base_dir: Path) -> str:
     </div>
 
     <script>
+        // Run data embedded at generation time — no fetch() needed (works on file:// protocol)
+        const embeddedRunData = __EMBEDDED_RUN_DATA__;
+
         const selectedRuns = new Set();
 
         function toggleSelection(checkbox) {
@@ -1227,7 +1310,7 @@ def generate_index_html(base_dir: Path) -> str:
             updateSelectionUI();
         }
 
-        async function buildComparison() {
+        function buildComparison() {
             if (selectedRuns.size < 2 || selectedRuns.size > 4) {
                 alert('Please select 2-4 runs to compare');
                 return;
@@ -1235,53 +1318,35 @@ def generate_index_html(base_dir: Path) -> str:
 
             const runs = Array.from(selectedRuns);
 
-            // Show loading message
-            const buildBtn = document.getElementById('build-btn');
-            const originalText = buildBtn.textContent;
-            buildBtn.textContent = 'Loading...';
-            buildBtn.disabled = true;
+            // Read from embedded data — no fetch() needed, works on file:// protocol
+            const runData = runs.map(runId => {
+                const entry = embeddedRunData[runId];
+                if (!entry) {
+                    alert(`Run data not found for: ${runId}`);
+                    return null;
+                }
+                return { runId, metadata: entry.metadata, summary: entry.summary };
+            }).filter(Boolean);
 
-            try {
-                // Fetch data for each run
-                const runData = await Promise.all(runs.map(async runId => {
-                    const metadataRes = await fetch(`../runs/${runId}/metadata.json`);
-                    const metadata = await metadataRes.json();
+            if (runData.length < 2) return;
 
-                    const summaryRes = await fetch(`../runs/${runId}/summary.json`);
-                    const summary = await summaryRes.json();
+            const comparisonHtml = generateComparisonHtml(runData);
+            const filename = `comparison_${runs.map(r => r.split('_').pop()).join('_vs_')}.html`;
 
-                    return { runId, metadata, summary };
-                }));
+            // Open in new tab
+            const newWindow = window.open('', '_blank');
+            newWindow.document.write(comparisonHtml);
+            newWindow.document.close();
+            newWindow.document.title = 'Agent Evaluation Comparison';
 
-                // Generate comparison HTML
-                const comparisonHtml = generateComparisonHtml(runData);
-
-                // Save to file (construct filename from run IDs)
-                const filename = `comparison_${runs.map(r => r.split('_').pop()).join('_vs_')}.html`;
-
-                // Open in new tab
-                const newWindow = window.open('', '_blank');
-                newWindow.document.write(comparisonHtml);
-                newWindow.document.close();
-                newWindow.document.title = 'Agent Evaluation Comparison';
-
-                // Also save to dashboards directory by creating a download
-                const blob = new Blob([comparisonHtml], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
-
-            } catch (error) {
-                console.error('Error building comparison:', error);
-                alert('Error loading comparison data. Make sure all runs have complete data files.');
-            } finally {
-                buildBtn.textContent = originalText;
-                buildBtn.disabled = false;
-                updateSelectionUI();
-            }
+            // Also trigger download
+            const blob = new Blob([comparisonHtml], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         function generateComparisonHtml(runData) {
@@ -1627,7 +1692,7 @@ def generate_index_html(base_dir: Path) -> str:
 </body>
 </html>
 """
-
+    html = html.replace("__EMBEDDED_RUN_DATA__", json.dumps(embedded_run_data))
     return html
 
 
@@ -1677,6 +1742,11 @@ def main():
         "--output",
         help="Output file path (defaults to database/agent_eval_reports/dashboards/<run_id>.html)"
     )
+    parser.add_argument(
+        "--all-runs",
+        action="store_true",
+        help="Generate dashboards for every run in the runs directory"
+    )
     args = parser.parse_args()
 
     base_dir = Path("database/agent_eval_reports")
@@ -1685,6 +1755,36 @@ def main():
         print(f"Error: {base_dir} directory not found", file=sys.stderr)
         print("Run 'make agent-eval' first to generate test reports", file=sys.stderr)
         sys.exit(1)
+
+    # --all-runs: generate a dashboard for every run directory, then regenerate index
+    if args.all_runs:
+        runs_dir = base_dir / "runs"
+        if not runs_dir.exists():
+            print(f"Error: {runs_dir} not found", file=sys.stderr)
+            sys.exit(1)
+        dashboards_dir = base_dir / "dashboards"
+        dashboards_dir.mkdir(exist_ok=True)
+        generated = 0
+        for run_dir in sorted(runs_dir.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            meta = load_run_metadata(run_dir)
+            results = load_test_results(run_dir)
+            if not results:
+                continue
+            html = generate_html(run_dir, meta, results)
+            run_id = meta.get("run_id", run_dir.name)
+            out = dashboards_dir / f"{run_id}.html"
+            with open(out, "w") as f:
+                f.write(html)
+            print(f"Dashboard generated: {out}")
+            generated += 1
+        index_html = generate_index_html(base_dir)
+        index_file = dashboards_dir / "index.html"
+        with open(index_file, "w") as f:
+            f.write(index_html)
+        print(f"Index updated: {index_file}  ({generated} runs)")
+        sys.exit(0)
 
     # Determine which run to use
     if args.run_id:

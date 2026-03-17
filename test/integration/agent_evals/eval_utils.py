@@ -17,25 +17,39 @@ def calculate_model_cost(model_name: str, input_tokens: int, output_tokens: int)
     Returns:
         Total cost in dollars
     """
-    # Extract model name from full identifier if needed
+    # Strip provider prefix (e.g., "anthropic:", "openai:", "google:")
     if ":" in model_name:
-        model_name = model_name.split(":")[-1]
+        model_name = model_name.split(":", 1)[1]
 
-    # Normalize model name (remove "anthropic:" prefix, handle variations)
-    model_name = model_name.lower().replace("anthropic:", "").replace("claude-", "")
+    # Normalize: lowercase, strip "claude-" prefix
+    model_name = model_name.lower().replace("claude-", "")
 
-    # Define pricing per million tokens (input, output)
+    # Pricing per million tokens (input, output)
     pricing = {
+        # Anthropic Claude
         "opus-4-6": (15.0, 75.0),
-        "opus-4": (15.0, 75.0),  # Alias
+        "opus-4": (15.0, 75.0),
+        "sonnet-4-6": (3.0, 15.0),
         "sonnet-4-5": (3.0, 15.0),
-        "sonnet-4": (3.0, 15.0),  # Alias
+        "sonnet-4": (3.0, 15.0),
+        "haiku-4-6": (0.80, 4.0),
         "haiku-4-5": (0.80, 4.0),
-        "haiku-4": (0.80, 4.0),  # Alias
+        "haiku-4": (0.80, 4.0),
+        # OpenAI
+        "gpt-4o": (2.50, 10.0),
+        "gpt-4o-mini": (0.15, 0.60),
+        "gpt-4-turbo": (10.0, 30.0),
+        "gpt-3.5-turbo": (0.50, 1.50),
+        "gpt-5.4": (2.50, 15.0),
+        # Google
+        "gemini-2.0-flash": (0.10, 0.40),
+        "gemini-2.5-pro": (1.25, 10.0),
+        "gemini-1.5-pro": (1.25, 5.00),
+        "gemini-1.5-flash": (0.075, 0.30),
     }
 
-    # Get pricing or use default (Sonnet 4.5 as fallback)
-    input_price, output_price = pricing.get(model_name, (3.0, 15.0))
+    # Get pricing or use a $0 fallback for unknown models
+    input_price, output_price = pricing.get(model_name, (0.0, 0.0))
 
     # Calculate cost
     input_cost = (input_tokens / 1_000_000) * input_price

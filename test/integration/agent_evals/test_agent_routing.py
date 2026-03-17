@@ -1,194 +1,143 @@
 """Evaluate Router agent's ability to route queries to appropriate agents."""
-import json
-import os
 import time
-from pathlib import Path
 
 import pytest
 
-from galaxy_test.driver.integration_util import IntegrationTestCase
-from .eval_utils import calculate_model_cost
+from .base import AgentEvalTestCase
 
 
 pytestmark = pytest.mark.requires_llm
 
 
-class TestAgentRoutingQuality(IntegrationTestCase):
-    """Test Router's routing decisions."""
+class TestAgentRoutingQuality(AgentEvalTestCase):
+    """Test Router's routing decisions for every possible route."""
 
-    def setUp(self):
-        super().setUp()
-        self._test_start_time = time.time()
-        self._test_metrics = {}
-        # Capture test metadata for categorization
-        # (test name is injected by conftest.py fixture)
-        self._test_category = self.__class__.__module__.split('.')[-1].replace('test_', '')
-        self._test_class = self.__class__.__name__
-
-    @classmethod
-    def handle_galaxy_config_kwds(cls, config):
-        """Configure Galaxy with AI agent settings."""
-        # Use useGalaxy.org tools for realistic tool recommendations
-        config["agent_eval_tool_source_url"] = "https://usegalaxy.org"
-
-        # Set AI model (from env var or default to Claude Haiku 4.5)
-        config["ai_model"] = os.environ.get("GALAXY_TEST_AI_MODEL", "anthropic:claude-haiku-4-5")
-
-        # Set AI API key if provided
-        if ai_api_key := os.environ.get("GALAXY_TEST_AI_API_KEY"):
-            config["ai_api_key"] = ai_api_key
-
-    @pytest.mark.asyncio
-    async def test_routes_tool_query_to_tool_recommendation(self):
-        """Router should delegate tool queries to ToolRecommendation agent."""
-        prompt = "What Galaxy tool should I use for RNA-seq alignment?"
-
+    def _query_and_capture(self, prompt: str, expected_agent: str) -> dict:
+        """Send a prompt to the router, capture full metadata, and return result dict."""
         start_time = time.time()
         response = self._post("/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True)
+        if response.status_code == 500:
+            time.sleep(5)
+            response = self._post("/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True)
         query_duration = time.time() - start_time
 
+        self._assert_status_code_is(response, 200)
         result = response.json()
+        agent_resp = result.get("response", {})
+        metadata = agent_resp.get("metadata", {}) if isinstance(agent_resp, dict) else {}
 
-        # Store metrics
         self._test_metrics.update({
             "query_duration_ms": int(query_duration * 1000),
             "prompt": prompt,
-            "agent_response": result["response"]["content"],
-            "agent_type": result["response"].get("agent_type", "router"),
-            "expected_agent": "tool_recommendation"
+            "agent_response": agent_resp.get("content", "") if isinstance(agent_resp, dict) else str(agent_resp),
+            "agent_type": agent_resp.get("agent_type", "router") if isinstance(agent_resp, dict) else "unknown",
+            "expected_agent": expected_agent,
+            "routing_method": metadata.get("method", ""),
         })
 
-        # Extract token usage from API response if available
-        if "usage" in result:
+        # Orchestrator plan — agents_used + execution_type
+        if metadata.get("agents_used"):
+            self._test_metrics["orchestrator_agents_used"] = metadata["agents_used"]
+            self._test_metrics["orchestrator_execution_type"] = metadata.get("execution_type", "unknown")
+
+        # Router handoff info (source_agent → target_agent)
+        handoff = metadata.get("handoff_info", {})
+        if handoff:
+            self._test_metrics["handoff_info"] = handoff
+
+        if result.get("usage"):
             self._test_metrics["agent_tokens_input"] = result["usage"].get("input_tokens", 0)
             self._test_metrics["agent_tokens_output"] = result["usage"].get("output_tokens", 0)
 
-        # Check that it routed to tool_recommendation
+        return result
+
+    # ── Direct answer (router replies without delegating) ────────────────────
+
+    def test_routes_galaxy_platform_question_directly(self):
+        """Router should answer basic Galaxy platform questions directly (no handoff)."""
+        prompt = "What is a Galaxy workflow and how do I create one?"
+        result = self._query_and_capture(prompt, expected_agent="router")
+        agent_type = result["response"]["agent_type"]
+        assert agent_type == "router", (
+            f"Expected direct answer from router, got handoff to '{agent_type}'"
+        )
+
+    # ── tool_recommendation ──────────────────────────────────────────────────
+
+    def test_routes_tool_query_to_tool_recommendation(self):
+        """Router should delegate tool discovery queries to tool_recommendation."""
+        prompt = "What Galaxy tool should I use for RNA-seq alignment?"
+        result = self._query_and_capture(prompt, expected_agent="tool_recommendation")
         assert result["response"]["agent_type"] == "tool_recommendation"
 
-    @pytest.mark.asyncio
-    async def test_routes_workflow_design_to_orchestrator(self):
-        """Router should delegate complex workflows to Orchestrator."""
+    def test_routes_tool_discovery_to_tool_recommendation(self):
+        """'Is there a tool that does X?' should go to tool_recommendation."""
+        prompt = "Is there a Galaxy tool that converts BAM files to FASTQ format?"
+        result = self._query_and_capture(prompt, expected_agent="tool_recommendation")
+        assert result["response"]["agent_type"] == "tool_recommendation"
+
+    # ── error_analysis ───────────────────────────────────────────────────────
+
+    def test_routes_pasted_error_to_error_analysis(self):
+        """Router should delegate queries with pasted error details to error_analysis."""
+        prompt = (
+            "My HISAT2 alignment job failed with this error:\n"
+            "Error: could not open file '/data/genome.fa': No such file or directory\n"
+            "Exit code: 1\n"
+            "What went wrong and how do I fix it?"
+        )
+        result = self._query_and_capture(prompt, expected_agent="error_analysis")
+        assert result["response"]["agent_type"] == "error_analysis"
+
+    # ── custom_tool ──────────────────────────────────────────────────────────
+
+    def test_routes_tool_creation_to_custom_tool(self):
+        """Router should delegate tool creation requests to custom_tool."""
+        prompt = "I want to create a Galaxy tool that wraps the samtools flagstat command."
+        result = self._query_and_capture(prompt, expected_agent="custom_tool")
+        assert result["response"]["agent_type"] == "custom_tool"
+
+    # ── history_analyzer ─────────────────────────────────────────────────────
+
+    def test_routes_history_summary_to_history_analyzer(self):
+        """Router should delegate history summarization to history_analyzer."""
+        prompt = "Can you summarize what analysis I ran in my Galaxy history?"
+        result = self._query_and_capture(prompt, expected_agent="history_analyzer")
+        assert result["response"]["agent_type"] == "history_analyzer"
+
+    def test_routes_methods_section_to_history_analyzer(self):
+        """Router should delegate methods section requests to history_analyzer."""
+        prompt = "Generate a methods section for my paper based on my Galaxy analysis history."
+        result = self._query_and_capture(prompt, expected_agent="history_analyzer")
+        assert result["response"]["agent_type"] == "history_analyzer"
+
+    # ── orchestrator ─────────────────────────────────────────────────────────
+
+    def test_routes_workflow_design_to_orchestrator(self):
+        """Router should delegate complex multi-step workflows to orchestrator."""
         prompt = (
             "I want to build a complete RNA-seq analysis pipeline from FASTQ to "
             "differential expression results. Can you help me design this workflow?"
         )
-
-        start_time = time.time()
-        response = self._post("/api/ai/agents/query", data={"query": prompt, "agent_type": "router"}, json=True)
-        query_duration = time.time() - start_time
-
-        result = response.json()
-
-        # Store metrics
-        self._test_metrics.update({
-            "query_duration_ms": int(query_duration * 1000),
-            "prompt": prompt,
-            "agent_response": result["response"]["content"],
-            "agent_type": result["response"].get("agent_type", "router"),
-            "expected_agent": "orchestrator"
-        })
-
-        # Extract token usage from API response if available
-        if "usage" in result:
-            self._test_metrics["agent_tokens_input"] = result["usage"].get("input_tokens", 0)
-            self._test_metrics["agent_tokens_output"] = result["usage"].get("output_tokens", 0)
-
-        # Check that it routed to orchestrator
+        result = self._query_and_capture(prompt, expected_agent="orchestrator")
         assert result["response"]["agent_type"] == "orchestrator"
 
-    def _save_test_report(self, test_name: str, status: str, error_message: str = None):
-        """Save test results as JSON report for dashboard."""
-        reports_dir = Path("test-reports")
-        reports_dir.mkdir(exist_ok=True)
+    def test_routes_find_failed_job_to_orchestrator(self):
+        """'What failed in my history?' requires history lookup then error analysis — orchestrator."""
+        prompt = "What failed in my Galaxy history and why?"
+        result = self._query_and_capture(prompt, expected_agent="orchestrator")
+        agent_type = result["response"]["agent_type"]
+        assert agent_type == "orchestrator", (
+            f"Expected orchestrator (needs history lookup + error analysis), got '{agent_type}'"
+        )
+        # Verify the orchestrator planned both sub-agents
+        agents_used = self._test_metrics.get("orchestrator_agents_used", [])
+        assert "history_analyzer" in agents_used, (
+            f"Orchestrator should include history_analyzer in plan, got: {agents_used}"
+        )
 
-        duration_ms = int((time.time() - self._test_start_time) * 1000)
-
-        # Extract token counts (if available - routing tests may not have judge tokens)
-        agent_tokens_in = self._test_metrics.get('agent_tokens_input', 0)
-        agent_tokens_out = self._test_metrics.get('agent_tokens_output', 0)
-        judge_tokens_in = self._test_metrics.get('judge_tokens_input', 0)
-        judge_tokens_out = self._test_metrics.get('judge_tokens_output', 0)
-
-        # Get model names for cost calculation
-        agent_model = getattr(self._app.config, 'ai_model', 'claude-sonnet-4-5')
-        judge_model = self._test_metrics.get('judge_model', 'claude-opus-4-6')
-
-        # Calculate costs using pricing utility
-        agent_cost = calculate_model_cost(agent_model, agent_tokens_in, agent_tokens_out)
-        judge_cost = calculate_model_cost(judge_model, judge_tokens_in, judge_tokens_out)
-        total_cost = agent_cost + judge_cost
-
-        # Build report with both legacy fields (for dashboard compatibility) and detailed metrics
-        report = {
-            # Test identity
-            "test_name": test_name,
-            "test_class": getattr(self, '_test_class', 'Unknown'),
-            "test_category": getattr(self, '_test_category', 'unknown'),
-            "test_file": "test_agent_routing.py",
-            # Run context
-            "run_id": getattr(self, '_agent_eval_run_id', 'unknown'),
-            "agent_model": agent_model,
-            "judge_model": judge_model,
-            "tool_source_url": getattr(self._app.config, 'agent_eval_tool_source_url', None),
-            # Test execution
-            "status": status,
-            "duration_ms": duration_ms,
-            "timestamp": time.time(),
-            # Legacy fields for current dashboard compatibility
-            "tokens_input": agent_tokens_in + judge_tokens_in,
-            "tokens_output": agent_tokens_out + judge_tokens_out,
-            "cost": total_cost,
-            **self._test_metrics
-        }
-
-        if error_message:
-            report["error"] = error_message
-
-        # Add detailed metrics breakdown
-        report["detailed_metrics"] = {
-            "agent_tokens": {"input": agent_tokens_in, "output": agent_tokens_out},
-            "judge_tokens": {"input": judge_tokens_in, "output": judge_tokens_out},
-            "costs": {
-                "agent_cost": agent_cost,
-                "judge_cost": judge_cost,
-                "total_cost": total_cost
-            }
-        }
-
-        # Save to legacy location (test-reports/) for backward compatibility
-        report_file = reports_dir / f"{test_name}.json"
-        with open(report_file, "w") as f:
-            json.dump(report, f, indent=2)
-
-        # Save to versioned storage using ReportManager
-        if hasattr(self, '_report_manager'):
-            category = report.get('test_category', 'unknown')
-            self._report_manager.save_report(category, test_name, report)
-
-    def tearDown(self):
-        """Save test report after each test."""
-        test_name = getattr(self, '_current_test_name', 'unknown_test')
-
-        status = "PASSED"
-        error_msg = None
-
-        if hasattr(self, "_outcome"):
-            result = self._outcome.result
-            if result.failures or result.errors:
-                status = "FAILED"
-                if result.failures:
-                    error_msg = str(result.failures[-1][1])
-                elif result.errors:
-                    error_msg = str(result.errors[-1][1])
-
-        # Also check quality score if available
-        if status == "PASSED" and "quality_score" in self._test_metrics and "min_score" in self._test_metrics:
-            quality_score = self._test_metrics["quality_score"]
-            min_score = self._test_metrics["min_score"]
-            if quality_score < min_score:
-                status = "FAILED"
-                error_msg = f"Quality score {quality_score} below threshold {min_score}"
-
-        self._save_test_report(test_name, status, error_msg)
-        super().tearDown()
+    def test_routes_next_step_advice_to_orchestrator(self):
+        """'What should I do next?' needs history context + recommendations — orchestrator."""
+        prompt = "Based on my current Galaxy analysis, what should I do next?"
+        result = self._query_and_capture(prompt, expected_agent="orchestrator")
+        assert result["response"]["agent_type"] == "orchestrator"

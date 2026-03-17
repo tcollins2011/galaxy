@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+from .base import AgentEvalTestCase
 from .report_manager import ReportManager
 
 
@@ -39,8 +40,9 @@ def agent_eval_run_id(request):
     # Add random suffix to prevent timestamp collisions
     random_suffix = random.randint(1000, 9999)
 
-    # Get model name from environment or use default (matches test config defaults)
-    model = os.environ.get("GALAXY_TEST_AI_MODEL", "anthropic:claude-haiku-4-5")
+    # Get model name — env var wins (CI overrides), then file, then default
+    local = AgentEvalTestCase._load_local_eval_config()
+    model = os.environ.get("GALAXY_TEST_AI_MODEL") or local.get("ai_model") or "anthropic:claude-haiku-4-5"
 
     # Extract short model name (e.g., "claude-sonnet-4-5" -> "sonnet45")
     model_short = model.split(":")[-1].replace("claude-", "").replace("-", "").replace(".", "")
@@ -69,9 +71,17 @@ def report_manager(agent_eval_run_id):
     Yields a ReportManager instance that tests can use to save reports.
     Automatically finalizes (generates summary, updates latest symlink) after all tests complete.
     """
-    # Get agent and judge models from environment (must match test config defaults)
-    agent_model = os.environ.get("GALAXY_TEST_AI_MODEL", "anthropic:claude-haiku-4-5")
-    judge_model = os.environ.get("GALAXY_TEST_JUDGE_MODEL", "claude-opus-4-6")
+    local = AgentEvalTestCase._load_local_eval_config()
+    agent_model = (
+        os.environ.get("GALAXY_TEST_AI_MODEL")
+        or local.get("ai_model")
+        or "anthropic:claude-haiku-4-5"
+    )
+    judge_model = (
+        os.environ.get("GALAXY_TEST_JUDGE_MODEL")
+        or local.get("agent_eval_judge_model")
+        or "claude-opus-4-6"
+    )
 
     # Create ReportManager
     manager = ReportManager(
